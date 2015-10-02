@@ -63,6 +63,9 @@ class LSTM(object):
     def get_output_size(self):
         return self.n_out
 
+    def get_input_size(self):
+        return self.n_in
+
     def set_initial_state(self, initial_state):
         self.initial_state = initial_state
         self.reset_initial_state = False
@@ -213,7 +216,10 @@ class Embedding(object):
         self.layer_number = number
 
     def get_output_size(self):
-        return self.n_out
+        return self.dim_proj
+
+    def get_input_size(self):
+        return self.size
 
     def activate(self, x):
 
@@ -271,6 +277,9 @@ class Softmax(object):
 
     def get_output_size(self):
         return self.n_out
+
+    def get_input_size(self):
+        return self.n_in
 
     def activate(self, x):
 

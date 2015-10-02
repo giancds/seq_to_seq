@@ -250,17 +250,9 @@ class SGD(Optimizer):
                  lr_rate=1e-1,
                  momentum=0.0,  # leave momentum at 0.0 if don't want to use it
                  nesterov_momentum=False,
-                 lr_rate_annealing=0.0,
-                 anneal_start=1,
-                 anneal_end=10,
-                 anneal_type='step_decay',
                  dtype=theano.config.floatX):
         Optimizer.__init__(self,
                            lr_rate=lr_rate,
-                           lr_rate_annealing=lr_rate_annealing,
-                           anneal_start=anneal_start,
-                           anneal_end=anneal_end,
-                           anneal_type=anneal_type,
                            dtype=dtype)
         self.momentum = momentum
         self.nesterov = nesterov_momentum
@@ -287,22 +279,6 @@ class SGD(Optimizer):
 
         assert (parameters is not None), 'Passing empty parameters to Stochastic Gradient Descent'
 
-        # new_lr = self.lr_rate.get_value(borrow=True)
-        new_lr = self.lr_rate.get_value()
-        # new_lr = self.lr_rate
-
-        # if the current epoch is inside the annealing start/end
-        # if self.anneal_start <= self.current_epoch <= self.anneal_end:
-        if self.anneal_type is 'step_decay':
-            new_lr = self.lr_rate * (1.0 / (1 + self.lr_rate_annealing)) \
-                if self.anneal_start <= self.current_epoch <= self.anneal_end else new_lr
-        elif self.anneal_type is '1_t_decay':
-            new_lr = self.lr_rate * (1.0 / (1 + self.lr_rate_annealing * self.current_epoch)) \
-                if self.anneal_start <= self.current_epoch <= self.anneal_end else new_lr
-
-        self.lr_rate.set_value(numpy.cast[self.lr_rate.dtype](new_lr))
-        # self.lr_rate = new_lr
-
         # define the gradients of parameters
         grad_theta = self._get_gradients(cost, parameters)
 
@@ -312,9 +288,9 @@ class SGD(Optimizer):
 
         for param, gradient in zip(parameters, grad_theta):
             m = self._share_zeroed_parameter([param], 'momentum_%s' % param, dtype=self.dtype)
-            v = self.momentum * m - new_lr * gradient
+            v = self.momentum * m - self.lr_rate * gradient
             if self.nesterov is True:
-                new_p = param + self.momentum * v - new_lr * gradient
+                new_p = param + self.momentum * v - self.lr_rate * gradient
             else:
                 new_p = param + v
 

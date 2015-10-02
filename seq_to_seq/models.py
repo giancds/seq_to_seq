@@ -3,73 +3,107 @@ import numpy
 import theano
 import theano.tensor as T
 
+from seq_to_seq import objectives, optimization
 
-class Model(object):
+
+class SequenceToSequence(object):
 
     def __init__(self,
-                 input_layer,
-                 hidden_layers=None,
-                 output_layer=None,
+                 encoder,
+                 decoder,
                  auto_setup=True):
 
-        self.input_layer = input_layer
-        self.hidden_layers = hidden_layers
-        self.output_layer = output_layer
+        self.encoder = encoder
+        self.decoder = decoder
 
         self._build_layer_sequence()
 
+        self.compute_objective = None
+
+        self.source_v_size = encoder[0].get_input_size()
+        self.target_v_size = decoder[-1].get_output_size()-1
+
+        self.encode_f = None
+        self.decode_f = None
+
         if auto_setup:
             self.setup()
-
-    def setup(self):
-        raise NotImplementedError
 
     def _build_layer_sequence(self):
         """
         Helper function to build de layer sequence.
         """
-        previous = self.input_layer
-        self.input_layer.set_layer_number(1)
+        previous = self.encoder[0]
+        self.encoder[0].set_layer_number(1)
 
         ln = 2
-        for layer in self.hidden_layers:
-            layer.set_previous_layer(previous)
-            layer.set_layer_number(ln)
-            previous = layer
+        for l in xrange(len(self.encoder)):
+            if l > 0:
+                self.encoder[l].set_previous_layer(previous)
+                self.encoder[l].set_layer_number(ln)
+                previous = self.encoder[l]
             ln += 1
 
-        self.output_layer.set_layer_number(ln)
-        self.output_layer.set_previous_layer(previous)
+        previous = self.decoder[0]
+        for l in xrange(len(self.decoder)):
+            if l > 0:
+                self.decoder[l].set_previous_layer(previous)
+                self.decoder[l].set_layer_number(ln)
+                previous = self.decoder[l]
+            ln += 1
 
-    def get_output(self, x, v=None):
-        raise NotImplementedError
+    def get_parameters(self):
+        """
 
+        :return:
+        """
+        parameters = []
 
-class Encoder(Model):
+        for layer in self.encoder:
+            parameters += layer.get_layer_parameters()
 
-    def __init__(self,
-                 input_layer,
-                 hidden_layers=None,
-                 output_layer=None,
-                 auto_setup=True):
+        for layer in self.decoder:
+            parameters += layer.get_layer_parameters()
 
-        self.encode_f = None
+        return parameters
 
-        Model.__init__(self,
-                       input_layer,
-                       hidden_layers=hidden_layers,
-                       output_layer=output_layer,
-                       auto_setup=auto_setup)
-
-    def setup(self):
+    def setup(self, optimizer=None):
         """
         Helper function to setup the computational graph for the encoder
         """
-        x = T.imatrix()
-        v0 = self.output_layer.activate(x)
-        self.encode_f = theano.function([x], v0, allow_input_downcast=True)
+        if optimizer is None:
+            optimizer = optimization.SGD(
+                lr_rate=.7,
+                momentum=0.0,
+                nesterov_momentum=False,
+                dtype=theano.config.floatX
+            )
 
-    def get_output(self, x, v=None):
+        output_layer = self.encoder[-1]
+
+        s = T.imatrix('S')
+        v0 = output_layer.activate(s)
+
+        self.encode_f = theano.function([s], v0, allow_input_downcast=True)
+
+        x = T.imatrix('x')  # input to decoder
+        y = T.imatrix('y')  # target sequence
+
+        # first, set the encoder hidden state as the initial state to the decoder
+        decoder_first_hidden = self.decoder[1]  # index 1 because 0 is the embedding layer
+        decoder_first_hidden.set_initial_state(v0)
+
+        # calculate the output of the network
+        soft = self.decoder[-1].activate(x)
+
+        cost = objectives.negative_log_likelihood(soft, y)
+        parameters = self.get_parameters()
+        backprop = optimizer.get_updates(cost, parameters)
+
+        # compute the network output
+        self.decode_f = theano.function([x, v0], soft, allow_input_downcast=True)
+
+    def get_encoded_sequence(self, x):
         """
         Compute the hidden state of the encoder.
 
@@ -77,9 +111,6 @@ class Encoder(Model):
         -----------
             x : numpy.ndarray
                 The input sequence that will be encoded.
-
-            v : None
-                Not actually used. Kept to match the 'super class' signature
 
         Returns:
         --------
@@ -90,43 +121,6 @@ class Encoder(Model):
         """
         encoded_sequence = self.encode_f(x)
         return encoded_sequence
-
-
-class Decoder(Model):
-
-    def __init__(self,
-                 input_layer,
-                 hidden_layers=None,
-                 output_layer=None,
-                 auto_setup=True):
-
-        self.decode_f = None
-
-        Model.__init__(self,
-                       input_layer,
-                       hidden_layers=hidden_layers,
-                       output_layer=output_layer,
-                       auto_setup=auto_setup)
-
-        self.target_v_size = self.output_layer.get_output_size()
-
-    def setup(self):
-        """
-        Helper function to setup the computational graph for the decoder.
-        """
-        x = T.imatrix()  # input to decoder
-        v = T.matrix()  # initial state of decoder's
-        s = T.matrix()  # softmax result
-
-        # first, set the encoder hidden state as the initial state to the decoder
-        first_hidden = self.hidden_layers[0]
-        first_hidden.set_initial_state(v)
-
-        # calculate the output of the network
-        soft = self.output_layer.activate(x)
-
-        # compute the network output
-        self.decode_f = theano.function([x, v], soft, allow_input_downcast=True)
 
     def get_initial_sequence(self, eos_idx):
         """
@@ -166,13 +160,19 @@ class Decoder(Model):
     def probability_of_y_given_x(self, y, v, initial_symbol=None, beam_search=False):
         """
 
+        Compute the probability of a sequence given a previously encoded sequence.
+
+        Notes:
+        -----
+            1. Use this function to compute the probability used for the cost
+
         :param y:
         :param v:
         :param initial_symbol:
         :return:
         """
         if initial_symbol is None:
-            initial_symbol = self.output_layer.get_output_size()-1
+            initial_symbol = self.decoder[-1].get_output_size()-1
 
         # assuming initial probability is 1 given the fact that we'll always use the <EOS> symbol
         # as the first input to the decoder
@@ -229,6 +229,7 @@ class Decoder(Model):
 
     def beam_search(self, initial_sequence=None, v=None, beam_size=2, return_probabilities=True):
         """
+        Perform the beam search for decoding a given representation of an encoded sequence.
         """
         assert v is not None
 
@@ -269,6 +270,12 @@ class Decoder(Model):
         return completed_hypoteses
 
     def _compute_hypotheses_probabilities(self, hypotheses, v):
+        """
+        Compute the probability of a given set of hypotheses.
+        :param hypotheses:
+        :param v:
+        :return:
+        """
 
         all_probabilities = numpy.ones((hypotheses.shape[0], 1))
 
@@ -283,8 +290,34 @@ class Decoder(Model):
 
     def _extract_n_best_partial_hypothesis(self, hypotheses, probabilities, n=2,
                                            return_probabilities=False):
+        """
+        Extract the N-best partial hypotheses from the set of all hypotheses.
 
-        # obtain the indexes to the highest probabilities
+        Parameters:
+        -----------
+
+            hypotheses : numpy.ndarray
+                Set of all hypotheses.
+
+            probabilities: : numpy.ndarray
+                Set containing the probability of each hypothesis in the set of all hypotheses.
+
+            n : integer
+                The number of best partial hypotheses to return (n stands for the N in N-best).
+
+            return_probabilities : boolean
+                A flag indicating whether or not to return the probability values together with
+                    the N-best partial hypotheses.
+
+        Returns:
+        --------
+
+            best_partial_hypotheses : numpy.ndarray
+                The set containing only the N-best partial hypotheses.
+
+        """
+        # obtain the indexes to the highest probabilities - use heapq because it is faster than
+        # sorting the entire array
         idx = heapq.nlargest(n, xrange(probabilities.shape[0]), probabilities.__getitem__)
 
         # extract them from the current hypotheses based on the indexes of the probabilities
@@ -298,7 +331,26 @@ class Decoder(Model):
             return best_partial_hypothesis
 
     def _check_completed_hypotheses(self, hypotheses):
+        """
+        Check in the list of all hypotheses those that are considered 'completed' (i.e., they
+            have <EOS> as its last symbol).
 
+        Parameters:
+        -----------
+
+            hypotheses : numpy.ndarray
+                Set of all hypotheses.
+
+        Returns:
+        --------
+
+            complete : numpy.ndarray
+                A set containing only completed hypotheses.
+
+            idx : numpy.ndarray
+                A set with the indexes of completed hypotheses.
+
+        """
         # obtain the last column of the complete hypotheses (where are the last predicted symbols)
         last_column = hypotheses[:, -1].reshape(hypotheses.shape[0], 1)
 
@@ -311,6 +363,26 @@ class Decoder(Model):
         return completed, idx
 
     def _remove_completed_hypotheses(self, hypotheses, idx):
+        """
+        Remove completed hypotheses from the set of all hypotheses.
+
+        Parameters:
+        -----------
+
+            hypotheses : numpy.ndarray
+                Set of all hypotheses.
+
+            idx: : numpy.ndarray
+                Set of indexes indicating which hypotheses should be removed from the set of all
+                    hypotheses.
+
+        Returns:
+        --------
+
+            cleaned : numpy.ndarray
+                The set containing only incomplete hypotheses.
+
+        """
 
         # remove the hypotheses according to the idx (i.e., remove the rows of the array)
         cleaned = numpy.delete(hypotheses, idx, axis=0)
