@@ -1,5 +1,5 @@
-import heapq
 import numpy
+import sys
 import theano
 import theano.tensor as T
 import time
@@ -83,17 +83,6 @@ class SequenceToSequence(object):
         if optimizer is None:
             optimizer = optimization.SGD(lr_rate=.7)
 
-        rng = numpy.random.RandomState(seed)
-
-        n_in = self.decoder[-1].get_output_size()
-        n_out = self.target_v_size
-
-        weights = rng.uniform(low=-.08, high=.08, size=(n_in, n_out))
-        bias = rng.uniform(low=-.08, high=.08, size=(n_out,))
-
-        self.W = theano.shared(value=weights, name='W_soft', borrow=True)
-        self.b = theano.shared(value=bias, name='b_soft', borrow=True)
-
         source = T.imatrix('S')
         target = T.imatrix('T')
 
@@ -161,6 +150,7 @@ class SequenceToSequence(object):
               test_set_y=None,
               batch_size=100,
               n_epochs=10,
+              print_train_info=False,
               seed=123):
 
         # get the number of samples on each dataset
@@ -168,12 +158,84 @@ class SequenceToSequence(object):
         n_valid_samples = valid_set_x.shape[0] if valid_set_x is not None else 0
         n_test_samples = test_set_x.shape[0] if test_set_x is not None else 0
 
+        n_train_batches = n_train_samples / batch_size
+        n_valid_batches = n_valid_samples / batch_size
+        n_test_batches = n_test_samples / batch_size
+
+        total_loss = 0.
+
         for epoch in xrange(n_epochs):
 
+            # shuffle the train data and labels
             numpy.random.seed(seed+epoch)
             numpy.random.shuffle(train_set_x)
             numpy.random.seed(seed+epoch)
             numpy.random.shuffle(train_set_y)
 
+            # get epoch start time
             epoch_time_1 = time.time()
+
+            # perform the minibatches and accumulate the total loss
+            total_loss += self._perform_minibatches(self.train_fn,
+                                                    train_set_x,
+                                                    train_set_y,
+                                                    epoch,
+                                                    n_samples=n_train_samples,
+                                                    n_batches=n_train_batches,
+                                                    batch_size=batch_size,
+                                                    print_train_info=print_train_info)
+            # get epoch end tme
             epoch_time_2 = time.time()
+
+            # print info
+            print '\nEpoch %i elapsed time %3.5f' % (epoch + 1, (epoch_time_2 - epoch_time_1))
+            print '\nEpoch %i averaged loss %3.10f\n' % (epoch + 1, (total_loss / n_train_batches))
+
+    def _perform_minibatches(self, train_fn, train_set_x, train_set_y, epoch, n_samples, n_batches,
+                             batch_size, print_train_info=False):
+
+        print '\nEpoch %i \nI am performing minibatches now...' % (epoch + 1)
+
+        total_loss = 0
+        accuracy = 0
+        for minibatch_index in xrange(n_batches):
+            time1 = time.time()
+            train_x, train_y = self._slice_batch_data(train_set_x, train_set_y,
+                                                      minibatch_index, batch_size)
+            # print 'Minibatch # %i' % minibatch_index
+            minibatch_avg_cost = train_fn(train_x, train_y)
+            total_loss += minibatch_avg_cost
+            time2 = time.time()
+            if print_train_info is True:
+                self._print_train_info(
+                    'Examples %i/%i - '
+                    'Avg. loss: %.8f - '
+                    'Time per batch: %3.5f' %
+                    ((minibatch_index + 1) * batch_size, n_samples,
+                     total_loss / (minibatch_index + 1),
+                     (time2 - time1)))
+        return total_loss
+
+    def _slice_batch_data(self, x_data, y_data, minibatch_idx, batch_size):
+
+        x = x_data[minibatch_idx * batch_size: (minibatch_idx + 1) * batch_size]
+
+        y = y_data[minibatch_idx * batch_size: (minibatch_idx + 1) * batch_size]
+
+        return x, y
+
+    def _print_train_info(self, info):
+        """
+        Help function to print train information.
+
+        Parameters:
+        ----------
+            info : string
+                Information to be printed
+
+        Returns:
+        --------
+        """
+        sys.stdout.write("\r")  # ensure stuff will be printed at the same line during an epoch
+        sys.stdout.write(info)
+        sys.stdout.flush()

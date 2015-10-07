@@ -121,11 +121,10 @@ def load_dictionary(filename, encoding='utf_8', skip=0, max_words=50000):
                 # split the line
                 s = line.split()
                 # get word and its index
-                word = s[0]
-                idx = index_counter
                 # if index > max. number of words, set it to 0
-                if line_counter < max_words:
-                    d[word] = idx
+                if index_counter < max_words:
+                    word = s[0]
+                    d[word] = index_counter
                     index_counter += 1
     return d
 
