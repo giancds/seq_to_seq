@@ -2,6 +2,7 @@ import heapq
 import numpy
 import theano
 import theano.tensor as T
+import time
 
 from seq_to_seq import objectives, optimization
 
@@ -11,20 +12,27 @@ class SequenceToSequence(object):
     def __init__(self,
                  encoder,
                  decoder,
+                 source_v_size=100000,
+                 target_v_size=100000,
                  auto_setup=True):
 
         self.encoder = encoder
         self.decoder = decoder
+        # self.output_layer = output_layer
 
         self._build_layer_sequence()
 
         self.compute_objective = None
 
-        self.source_v_size = encoder[0].get_input_size()
-        self.target_v_size = decoder[-1].get_output_size()-1
+        self.source_v_size = source_v_size
+        self.target_v_size = target_v_size
 
         self.encode_f = None
-        self.decode_f = None
+        self.train_fn = None
+        self.validate_fn = None
+
+        self.W = None
+        self.b = None
 
         if auto_setup:
             self.setup()
@@ -52,6 +60,9 @@ class SequenceToSequence(object):
                 previous = self.decoder[l]
             ln += 1
 
+        # self.output_layer.set_previous_layer(previous)
+        # self.output_layer.set_layer_number(ln)
+
     def get_parameters(self):
         """
 
@@ -67,324 +78,102 @@ class SequenceToSequence(object):
 
         return parameters
 
-    def setup(self, optimizer=None):
-        """
-        Helper function to setup the computational graph for the encoder
-        """
+    def setup(self, optimizer=None, seed=123):
+
         if optimizer is None:
-            optimizer = optimization.SGD(
-                lr_rate=.7,
-                momentum=0.0,
-                nesterov_momentum=False,
-                dtype=theano.config.floatX
-            )
+            optimizer = optimization.SGD(lr_rate=.7)
 
-        output_layer = self.encoder[-1]
+        rng = numpy.random.RandomState(seed)
 
-        s = T.imatrix('S')
-        v0 = output_layer.activate(s)
+        n_in = self.decoder[-1].get_output_size()
+        n_out = self.target_v_size
 
-        self.encode_f = theano.function([s], v0, allow_input_downcast=True)
+        weights = rng.uniform(low=-.08, high=.08, size=(n_in, n_out))
+        bias = rng.uniform(low=-.08, high=.08, size=(n_out,))
 
-        x = T.imatrix('x')  # input to decoder
-        y = T.imatrix('y')  # target sequence
+        self.W = theano.shared(value=weights, name='W_soft', borrow=True)
+        self.b = theano.shared(value=bias, name='b_soft', borrow=True)
 
-        # first, set the encoder hidden state as the initial state to the decoder
+        source = T.imatrix('S')
+        target = T.imatrix('T')
+
+        encoded_source = self.encoder[-1].activate(source)
+
         decoder_first_hidden = self.decoder[1]  # index 1 because 0 is the embedding layer
-        decoder_first_hidden.set_initial_state(v0)
+        decoder_first_hidden.set_initial_state(encoded_source)
+        decoded = self.decoder[-1].activate(target)
 
-        # calculate the output of the network
-        soft = self.decoder[-1].activate(x)
+        # reshape the decoded vectors so it is possible to apply softmax and keep the dimensions
+        shape = decoded.shape
+        probs = T.nnet.softmax(decoded.reshape([shape[0]*shape[1], shape[2]]))
 
-        cost = objectives.negative_log_likelihood(soft, y)
-        parameters = self.get_parameters()
-        backprop = optimizer.get_updates(cost, parameters)
+        # cost
+        y_flat = target.flatten()
+        y_flat_idx = T.arange(y_flat.shape[0]) * self.target_v_size + y_flat
+        cost = -T.log(probs.flatten()[y_flat_idx])
+        cost = cost.reshape([target.shape[0], target.shape[1]])
+        cost = cost.sum(0)
+        cost = cost.mean()
 
-        # compute the network output
-        self.decode_f = theano.function([x, v0], soft, allow_input_downcast=True)
+        gradients = optimizer.get_gradients(cost, self.get_parameters())
+        gradients = self._apply_hard_constraint_on_gradients(gradients)
 
-    def get_encoded_sequence(self, x):
-        """
-        Compute the hidden state of the encoder.
+        backprop = optimizer.get_updates(gradients, self.get_parameters())
 
-        Parameters:
-        -----------
-            x : numpy.ndarray
-                The input sequence that will be encoded.
-
-        Returns:
-        --------
-            encoded_sequence : numpy.ndarray
-                An array representing the encoded sequence. The dimension is (1 x projection_size),
-                    i.e., (1 x output_layer.n_out).
-
-        """
-        encoded_sequence = self.encode_f(x)
-        return encoded_sequence
-
-    def get_initial_sequence(self, eos_idx):
-        """
-        Generate an initial sequence to start the decoding
-
-        Parameters:
-        -----------
-            eos_idx : integer
-                Integer representing the index of the <EOS> symbol.
-
-        Returns:
-        --------
-            initial_sequence : numpy.ndarray
-                A (1 x 1) matrix containing the index of the <EOS> symbol in the target language.
-
-        """
-        # create an initial sequence
-        initial_sequence = numpy.asarray([eos_idx - 1])
-        initial_sequence = initial_sequence.reshape(1, 1)
-
-        return initial_sequence
-
-    def get_probabilities(self, x, v=None):
-        """
-        Return the probabilities ofa given sequence and the initial state.
-
-        :param x:
-        :param v:
-        :return:
-        """
-        assert v is not None
-
-        # decode the sequence x given the hidden state v
-        probs = self.decode_f(x, v)
-        return probs
-
-    def probability_of_y_given_x(self, y, v, initial_symbol=None, beam_search=False):
-        """
-
-        Compute the probability of a sequence given a previously encoded sequence.
-
-        Notes:
-        -----
-            1. Use this function to compute the probability used for the cost
-
-        :param y:
-        :param v:
-        :param initial_symbol:
-        :return:
-        """
-        if initial_symbol is None:
-            initial_symbol = self.decoder[-1].get_output_size()-1
-
-        # assuming initial probability is 1 given the fact that we'll always use the <EOS> symbol
-        # as the first input to the decoder
-        total_prob = 1
-
-        if not beam_search:
-            # turn it into a 1 x 1 matrix and stack the initial symbol to the target sequence
-            y_ = numpy.hstack((numpy.asarray([initial_symbol]).reshape(1, 1), y))
-        else:
-            # turn the input into a 1 x size_of_y matrix because we will append <EOS> latter
-            y_ = numpy.asarray(y).reshape(1, len(y))
-
-        # for all symbols in the stacked sequence
-        for i in xrange(y_.shape[1]):
-            if i > 0:  # start after the first symbol which is supposed to be the <eos>
-                next_symbol = y_[0, i]    # get the symbol index
-                x = numpy.asarray(y_[0, 0:i+1]).reshape(1, i+1)  # slice the sequence
-                all_probabilities = self.get_probabilities(x, v)  # compute all probabilities
-                symbol_prob = all_probabilities[0][next_symbol]  # extract our target probability
-                total_prob *= symbol_prob   # multiply by the previous probabilities
-
-        return total_prob
-
-    def generate_new_hypotheses(self, old_hypothesis):
-        """
-
-        :param old_hypothesis:
-        :return:
-        """
-        # get the output size (should be equal to the target vocabulary size)
-        size = self.target_v_size
-
-        # create a new matrix containing the actual hypothesis stacked 'size' times
-        new_hypotheses = None
-
-        for i in xrange(old_hypothesis.shape[0]):
-            tiled = numpy.tile(old_hypothesis[i], (size, 1))
-            if i == 0:
-                new_hypotheses = tiled
-            else:
-                new_hypotheses = numpy.vstack((new_hypotheses, tiled))
-
-        # generate an array containing all the symbols representing the target vocabulary
-        appendix = numpy.asarray(xrange(size))
-        appendix = appendix.reshape(appendix.shape[0], 1)
-        appendix = numpy.tile(appendix, (old_hypothesis.shape[0], 1))
-
-        # append the array into the matrix of hypothesis
-        new_hypotheses = numpy.hstack(
-            (new_hypotheses, appendix)
+        # function to get the encoded sentence
+        self.encode_f = theano.function(
+            [source], encoded_source, allow_input_downcast=True
         )
 
-        return new_hypotheses
+        # function for testing purposes
+        # self.decode_f = theano.function(
+        #     [target, encoded_source], prediction, allow_input_downcast=True
+        # )
 
-    def beam_search(self, initial_sequence=None, v=None, beam_size=2, return_probabilities=True):
-        """
-        Perform the beam search for decoding a given representation of an encoded sequence.
-        """
-        assert v is not None
+        # function to perform the training with parameters updates
+        self.train_fn = theano.function(
+            inputs=[source, target],
+            outputs=cost,
+            updates=backprop
+        )
 
-        completed_hypoteses = []
+        # function to get the cost using training and test sets
+        self.validate_fn = theano.function(
+            inputs=[source, target], outputs=cost
+        )
 
-        if initial_sequence is None:
-            initial_sequence = self.get_initial_sequence(self.target_v_size)
+    def _apply_hard_constraint_on_gradients(self, gradients, threshold=5, batch=128, norm=2):
 
-        # given the input sequence, generate a series of new hypotheses
-        new_hypotheses = self.generate_new_hypotheses(initial_sequence)
+        for g in gradients:
+            g_div = g / batch
+            s = g_div.norm(norm)
+            if T.ge(s, threshold):
+                g = (threshold * g) / s
 
-        while len(completed_hypoteses) < beam_size:
-            # compute all probabilities of the generated hypotheses
-            all_probabilities = self._compute_hypotheses_probabilities(new_hypotheses, v)
+        return gradients
 
-            # extract the N-best hypothesis
-            best_hypotheses, probs = self._extract_n_best_partial_hypothesis(
-                new_hypotheses, all_probabilities, n=beam_size,
-                return_probabilities=return_probabilities
-            )
+    def train(self,
+              train_set_x,
+              train_set_y,
+              valid_set_x=None,
+              valid_set_y=None,
+              test_set_x=None,
+              test_set_y=None,
+              batch_size=100,
+              n_epochs=10,
+              seed=123):
 
-            # check those that are completed hypothesis
-            completed, idx = self._check_completed_hypotheses(best_hypotheses)
+        # get the number of samples on each dataset
+        n_train_samples = train_set_x.shape[0]
+        n_valid_samples = valid_set_x.shape[0] if valid_set_x is not None else 0
+        n_test_samples = test_set_x.shape[0] if test_set_x is not None else 0
 
-            # extract the probability of completed hypotheses
-            completed_probs = probs[idx]
+        for epoch in xrange(n_epochs):
 
-            # transform the completed hypotheses and their probabilities into list and zip
-            # them into tuples before assigning them to the set of completed hypothesis
-            completed_hypoteses += zip(completed.tolist(), completed_probs.tolist())
+            numpy.random.seed(seed+epoch)
+            numpy.random.shuffle(train_set_x)
+            numpy.random.seed(seed+epoch)
+            numpy.random.shuffle(train_set_y)
 
-            # remove the completed hypotheses from the list of best hypotheses
-            best_hypotheses = self._remove_completed_hypotheses(best_hypotheses, idx)
-
-            # generate a set of new hypothesis
-            new_hypotheses = self.generate_new_hypotheses(best_hypotheses)
-
-        return completed_hypoteses
-
-    def _compute_hypotheses_probabilities(self, hypotheses, v):
-        """
-        Compute the probability of a given set of hypotheses.
-        :param hypotheses:
-        :param v:
-        :return:
-        """
-
-        all_probabilities = numpy.ones((hypotheses.shape[0], 1))
-
-        i = 0
-        # for all generated hypotheses, get its probabilities given the
-        for h in hypotheses:
-            p = self.probability_of_y_given_x(h, v, beam_search=True)
-            all_probabilities[i] = p
-            i += 1
-
-        return all_probabilities
-
-    def _extract_n_best_partial_hypothesis(self, hypotheses, probabilities, n=2,
-                                           return_probabilities=False):
-        """
-        Extract the N-best partial hypotheses from the set of all hypotheses.
-
-        Parameters:
-        -----------
-
-            hypotheses : numpy.ndarray
-                Set of all hypotheses.
-
-            probabilities: : numpy.ndarray
-                Set containing the probability of each hypothesis in the set of all hypotheses.
-
-            n : integer
-                The number of best partial hypotheses to return (n stands for the N in N-best).
-
-            return_probabilities : boolean
-                A flag indicating whether or not to return the probability values together with
-                    the N-best partial hypotheses.
-
-        Returns:
-        --------
-
-            best_partial_hypotheses : numpy.ndarray
-                The set containing only the N-best partial hypotheses.
-
-        """
-        # obtain the indexes to the highest probabilities - use heapq because it is faster than
-        # sorting the entire array
-        idx = heapq.nlargest(n, xrange(probabilities.shape[0]), probabilities.__getitem__)
-
-        # extract them from the current hypotheses based on the indexes of the probabilities
-        best_partial_hypothesis = hypotheses[idx]
-
-        if return_probabilities:
-            best_probabilities = probabilities[idx]
-            return best_partial_hypothesis, best_probabilities
-
-        else:
-            return best_partial_hypothesis
-
-    def _check_completed_hypotheses(self, hypotheses):
-        """
-        Check in the list of all hypotheses those that are considered 'completed' (i.e., they
-            have <EOS> as its last symbol).
-
-        Parameters:
-        -----------
-
-            hypotheses : numpy.ndarray
-                Set of all hypotheses.
-
-        Returns:
-        --------
-
-            complete : numpy.ndarray
-                A set containing only completed hypotheses.
-
-            idx : numpy.ndarray
-                A set with the indexes of completed hypotheses.
-
-        """
-        # obtain the last column of the complete hypotheses (where are the last predicted symbols)
-        last_column = hypotheses[:, -1].reshape(hypotheses.shape[0], 1)
-
-        # get the indexes where the symbol is equal to the <EOS> symbol
-        idx = numpy.where(last_column == self.target_v_size)
-
-        # obtain the completed hypotheses
-        completed = hypotheses[idx]
-
-        return completed, idx
-
-    def _remove_completed_hypotheses(self, hypotheses, idx):
-        """
-        Remove completed hypotheses from the set of all hypotheses.
-
-        Parameters:
-        -----------
-
-            hypotheses : numpy.ndarray
-                Set of all hypotheses.
-
-            idx: : numpy.ndarray
-                Set of indexes indicating which hypotheses should be removed from the set of all
-                    hypotheses.
-
-        Returns:
-        --------
-
-            cleaned : numpy.ndarray
-                The set containing only incomplete hypotheses.
-
-        """
-
-        # remove the hypotheses according to the idx (i.e., remove the rows of the array)
-        cleaned = numpy.delete(hypotheses, idx, axis=0)
-
-        return cleaned
+            epoch_time_1 = time.time()
+            epoch_time_2 = time.time()

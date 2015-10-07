@@ -30,13 +30,13 @@ class Optimizer(object):
         self.anneal_type = anneal_type
         self.dtype = dtype
 
-    def _get_gradients(self, objective_function, parameters):
+    def get_gradients(self, cost, parameters):
         """
         Return the gradients in symbolic format following Theano's conventions.
 
         Parameters:
         ----------
-            objective_function : theano.tensor
+            cost : theano.tensor
                     Objective function defined by symbols.
 
             parameters : list if theano.shared
@@ -48,7 +48,7 @@ class Optimizer(object):
                 The gradients with respect to the parameters supplied to the function.
 
         """
-        gradients = [T.grad(objective_function, param) for param in parameters]
+        gradients = [T.grad(cost, param) for param in parameters]
         return gradients
 
     def _share_zeroed_parameter(self, parameters, name, dtype=theano.config.floatX):
@@ -140,7 +140,7 @@ class Adadelta(Optimizer):
                            dtype=dtype)
         self.epsilon = epsilon
 
-    def get_updates(self, cost, parameters=None):
+    def get_updates(self, gradients, parameters=None):
         """
         Method to get parameter updates for the optimization process according to RMSProp.
 
@@ -150,8 +150,8 @@ class Adadelta(Optimizer):
 
         Parameters:
         -----------
-            cost : theano.tensor
-                Symbolic representation of the network cost (a.k.a. loss, objective)
+            gradients : theano.tensor
+                Symbolic representation of the parameter gradients.
 
             parameters : list
                 The list of parameters to update (possibly a list of theano.shared)
@@ -171,7 +171,7 @@ class Adadelta(Optimizer):
             print 'WARNING: Learning rate annealing is not suported for this implementation of ' \
                   'Adadelta. I am ignoring it.'
 
-        gradients = self._get_gradients(cost, parameters)
+        # gradients = self._get_gradients(cost, parameters)
 
         # share some parameters to perform the update
         zipped_grads = self._share_zeroed_parameter(parameters, name='%s_grad', dtype=self.dtype)
@@ -257,15 +257,15 @@ class SGD(Optimizer):
         self.momentum = momentum
         self.nesterov = nesterov_momentum
 
-    def get_updates(self, cost, parameters=None):
+    def get_updates(self, gradients, parameters=None):
         """
         Method to get parameter updates for the optimization process according to Stochastic
             Gradient Descent (SGD).
 
         Parameters:
         -----------
-            cost : theano.tensor
-                Symbolic representation of the network cost (a.k.a. loss, objective)
+            gradients : theano.tensor
+                Symbolic representation of the parameter gradients.
 
             parameters : list
                 The list of parameters to update (possibly a list of theano.shared)
@@ -279,14 +279,14 @@ class SGD(Optimizer):
 
         assert (parameters is not None), 'Passing empty parameters to Stochastic Gradient Descent'
 
-        # define the gradients of parameters
-        grad_theta = self._get_gradients(cost, parameters)
+        # # define the gradients of parameters
+        # grad_theta = self._get_gradients(cost, parameters)
 
         # parameters' updates
         updates = []
         append = updates.append  # use this to avoid dot calls - it can give some speedup
 
-        for param, gradient in zip(parameters, grad_theta):
+        for param, gradient in zip(parameters, gradients):
             m = self._share_zeroed_parameter([param], 'momentum_%s' % param, dtype=self.dtype)
             v = self.momentum * m - self.lr_rate * gradient
             if self.nesterov is True:
@@ -364,7 +364,7 @@ class RMSProp(Optimizer):
         self.beta = beta
         self.gamma = gamma
 
-    def get_updates(self, cost, parameters):
+    def get_updates(self, gradients, parameters):
         """
         Method to get parameter updates for the optimization process according to RMSProp.
 
@@ -374,8 +374,8 @@ class RMSProp(Optimizer):
 
         Parameters:
         -----------
-            cost : theano.tensor
-                Symbolic representation of the network cost (a.k.a. loss, objective)
+            gradients : theano.tensor
+                Symbolic representation of the parameter gradients.
 
             parameters : list
                 The list of parameters to update (possibly a list of theano.shared)
@@ -395,7 +395,7 @@ class RMSProp(Optimizer):
             print 'WARNING: Learning rate annealing is not suported for this implementation of ' \
                   'RMSProp. I am ignoring it.'
 
-        gradients = self._get_gradients(cost, parameters)
+        # gradients = self._get_gradients(cost, parameters)
 
         # share some parameters to perform the update
         zipped_grads = self._share_zeroed_parameter(parameters, name='%s_grad', dtype=self.dtype)
