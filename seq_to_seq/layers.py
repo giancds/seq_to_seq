@@ -16,6 +16,7 @@ class Layer(object):
                  previous_layer=None,
                  layer_number=1,
                  seed=123,
+                 auto_setup=True,
                  dtype=theano.config.floatX):
         self.n_in = n_in
         self.n_out = n_out
@@ -24,7 +25,8 @@ class Layer(object):
         self.seed = seed
         self.dtype = dtype
 
-        self.init_params()
+        if auto_setup:
+            self.init_params(seed)
 
     def init_params(self, seed=123):
         raise NotImplementedError
@@ -44,6 +46,15 @@ class Layer(object):
     def get_mask(self):
         raise NotImplementedError
 
+    def activate(self, x):
+        raise NotImplementedError
+
+    def get_weights(self):
+        raise NotImplementedError
+
+    def set_weights(self, parameters, layer_number):
+        raise NotImplementedError
+
 
 class Embedding(Layer):
     def __init__(self,
@@ -52,6 +63,7 @@ class Embedding(Layer):
                  previous_layer=None,
                  layer_number=1,
                  seed=123,
+                 auto_setup=True,
                  dtype=theano.config.floatX):
 
         self.W = None
@@ -63,6 +75,7 @@ class Embedding(Layer):
                        previous_layer=previous_layer,
                        layer_number=layer_number,
                        seed=seed,
+                       auto_setup=auto_setup,
                        dtype=dtype)
 
     def init_params(self, seed=123):
@@ -90,6 +103,19 @@ class Embedding(Layer):
 
         return activation
 
+    def get_weights(self):
+        weights = [self.W.get_value(borrow=True)]
+        return weights
+
+    def set_weights(self, parameters, layer_number):
+
+        assert len(parameters) == 1, 'Wrong number of parameters to be set to EmbbedingLayer!'
+
+        self.layer_number = layer_number
+        w = parameters[0].value
+
+        self.W = theano.shared(value=w, name='W_%s' % self.layer_number, borrow=True)
+
 
 class LSTM(Layer):
     def __init__(self,
@@ -100,15 +126,8 @@ class LSTM(Layer):
                  return_hidden_states=False,
                  layer_number=1,
                  seed=123,
+                 auto_setup=True,
                  dtype=theano.config.floatX):
-
-        Layer.__init__(self,
-                       n_in,
-                       n_out,
-                       previous_layer=previous_layer,
-                       layer_number=layer_number,
-                       seed=seed,
-                       dtype=dtype)
 
         self.return_sequences = return_sequences
         self.return_hidden_states = return_hidden_states
@@ -120,7 +139,14 @@ class LSTM(Layer):
         self.R = None
         self.b = None
 
-        self.init_params(seed)
+        Layer.__init__(self,
+                       n_in,
+                       n_out,
+                       previous_layer=previous_layer,
+                       layer_number=layer_number,
+                       seed=seed,
+                       auto_setup=auto_setup,
+                       dtype=dtype)
 
     def init_params(self, seed=123):
 
@@ -158,28 +184,21 @@ class LSTM(Layer):
 
         if pad > 0:
             # left-pad in time with 0
-            # padding = alloc_zeros_matrix(pad, mask.shape[1], 1)
-            # T.alloc(np.cast[theano.config.floatX](0.), *dims)
             padding = T.alloc(numpy.cast[theano.config.floatX](0.), pad, mask.shape[1], 1)
             mask = T.concatenate([padding, mask], axis=0)
         return mask.astype('int8')
 
-    def activate(self, x, one_step=False, initial_state=None):
+    def activate(self, x):
 
         if self.previous_layer is None:
             act0 = x
         else:
-            if isinstance(self.previous_layer, LSTM):
-                act0 = self.previous_layer.activate(
-                    x, one_step, initial_state
-                )
-            else:
-                act0 = self.previous_layer.activate(x)
+            act0 = self.previous_layer.activate(x)
 
-        activation = self._activate(act0, one_step, initial_state)
+        activation = self._activate(act0)
         return activation
 
-    def _activate(self, x, one_step=False, initial_state=None):
+    def _activate(self, x):
 
         mask = self.get_padded_shuffled_mask(x)
         # input to block is (batch, time, input)
@@ -190,6 +209,7 @@ class LSTM(Layer):
         xz, xi, xf, xo = self._slice(xs)
 
         if self.reset_initial_state:
+
             initial_state = T.unbroadcast(T.alloc(
                 numpy.asarray(0., dtype=self.dtype),
                 x.shape[1], self.n_out
@@ -202,18 +222,18 @@ class LSTM(Layer):
             x.shape[1], self.n_out
         ))
 
-        (out, pre), memory = theano.scan(
-            self._step,
-            sequences=[xz, xi, xf, xo, mask],
-            outputs_info=[dict(initial=initial_state), dict(initial=initial_memory)],
-            non_sequences=[self.R],
-            n_steps=x.shape[0]  # keep track of number of steps to return all computations
+        (state, memory), updates = theano.scan(
+                self._step,
+                sequences=[xz, xi, xf, xo, mask],
+                outputs_info=[initial_state, initial_memory],
+                non_sequences=[self.R],
+                n_steps=x.shape[0]  # keep track of number of steps to return all computations
         )
 
         if self.return_sequences:
-            return out.dimshuffle((1, 0, 2))
+            return state.dimshuffle((1, 0, 2))
         else:
-            return out[-1]
+            return state[-1]
 
     def _step(self,
               xz_, xi_, xf_, xo_, m_,
@@ -274,5 +294,62 @@ class LSTM(Layer):
         else:
             return m[:, 0 * n:1 * n], m[:, 1 * n:2 * n], m[:, 2 * n:3 * n], m[:, 3 * n:4 * n]
 
+    def get_weights(self):
+        """
+        Return the layer's list of parameters.
 
+        Parameters:
+        -----------
 
+            tied_weights : boolean
+                A flag indicating if the layer is sharing weights with other layers. If True, the
+                    function will return only the bias. Default to False (i.e., returns both
+                    weights and bias).
+
+        Returns:
+        --------
+            weights : list
+                A list containing either weights (pos0) and bias (pos1) or only bias (pos0).
+        """
+        weights = [self.W.get_value(borrow=True),
+                   self.R.get_value(borrow=True),
+                   self.b.get_value(borrow=True)]
+        return weights
+
+    def set_weights(self, parameters, layer_number):
+        """
+        This function receives the parameter list and sets to the right variables.
+
+        Notes:
+        ------
+            1. It is designed to be used by the save and load functions of Networks and Encoders
+                models. Need modification if want to use with different modules.
+
+            2. The parameters is a list of h5py datasets. To get the actual values, use the
+                built-in '.value' function of these datasets. Example:
+                    parameters[0].value
+
+        Parameters:
+        -----------
+
+            parameters : list of h5py datasets
+                List containing the h5py datasets to be used to set the layer's weights and bias.
+
+            layer_number : int
+                The layer's position (1-based) in the computation path. Mainly used to set theano's
+                    shared variables names.
+
+        Returns:
+        -------
+
+        """
+        assert len(parameters) == 3, 'Wrong number of parameters to be set to LSTM layer!'
+
+        self.layer_number = layer_number
+        weights = parameters[0].value
+        recs = parameters[1].value
+        bias = parameters[2].value
+
+        self.W = theano.shared(value=weights, name='W_%s' % self.layer_number, borrow=True)
+        self.R = theano.shared(value=recs, name='R_%s' % self.layer_number, borrow=True)
+        self.b = theano.shared(value=bias, name='b_%s' % self.layer_number, borrow=True)

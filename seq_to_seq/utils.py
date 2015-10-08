@@ -9,14 +9,16 @@ def prepare_data(seqs_x, seqs_y, maxlen=None):
     lengths_x = [len(s) for s in seqs_x]
     lengths_y = [len(s) for s in seqs_y]
 
-    lengths = lengths_x + lengths_y
-
     nb_samples = len(seqs_x)
     if maxlen is None:
-        maxlen = numpy.max(lengths)
+        maxlen_x = numpy.max(lengths_x)
+        maxlen_y = numpy.max(lengths_y)
+    else:
+        maxlen_x = maxlen
+        maxlen_y = maxlen
 
-    x_padded = pad_sequences(seqs_x, maxlen, nb_samples)
-    y_padded = pad_sequences(seqs_y, maxlen, nb_samples)
+    x_padded = pad_sequences(seqs_x, maxlen_x, nb_samples)
+    y_padded = pad_sequences(seqs_y, maxlen_y, nb_samples)
 
     # x_mask = (x_pad > -1).astype('int8')
     # y_mask = (y_pad > -1).astype('int8')
