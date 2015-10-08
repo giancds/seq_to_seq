@@ -1,7 +1,6 @@
-import numpy
-
-from seq_to_seq.layers import Embedding, LSTM
+from seq_to_seq.embedding_layers import Embedding
 from seq_to_seq.models import SequenceToSequence
+from seq_to_seq.recurrent_layers import LSTM
 
 from utils import prepare_data, load_dictionary, load_and_convert_corpora
 
@@ -58,8 +57,5 @@ seq.train(train_x,
           save_model=True,
           filepath='/home/gian/seq_to_seq.hp5y',
           keep_old_models=True)
-
-# example = numpy.asarray(sequences1[0])
-# seq.translate(example.reshape(1, example.shape[0]))
 
 print 'Done!'

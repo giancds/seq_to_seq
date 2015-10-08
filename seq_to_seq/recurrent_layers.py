@@ -1,123 +1,16 @@
 import numpy
 import theano
-
 import theano.tensor as T
 
-import activations
+from seq_to_seq import activations
+from seq_to_seq.layers_core import Layer
 
 sigmoid = activations.get('sigmoid')
 tanh = activations.get('tanh')
 
 
-class Layer(object):
-    def __init__(self,
-                 n_in,
-                 n_out,
-                 previous_layer=None,
-                 layer_number=1,
-                 seed=123,
-                 auto_setup=True,
-                 dtype=theano.config.floatX):
-        self.n_in = n_in
-        self.n_out = n_out
-        self.previous_layer = previous_layer
-        self.layer_number = layer_number
-        self.seed = seed
-        self.dtype = dtype
+class RecurrentLayer(Layer):
 
-        if auto_setup:
-            self.init_params(seed)
-
-    def init_params(self, seed=123):
-        raise NotImplementedError
-
-    def set_previous_layer(self, previous):
-        self.previous_layer = previous
-
-    def set_layer_number(self, number):
-        self.layer_number = number
-
-    def get_output_size(self):
-        return self.n_out
-
-    def get_input_size(self):
-        return self.n_in
-
-    def get_mask(self):
-        raise NotImplementedError
-
-    def activate(self, x):
-        raise NotImplementedError
-
-    def get_weights(self):
-        raise NotImplementedError
-
-    def set_weights(self, parameters, layer_number):
-        raise NotImplementedError
-
-
-class Embedding(Layer):
-    def __init__(self,
-                 size,
-                 dim_proj,
-                 previous_layer=None,
-                 layer_number=1,
-                 seed=123,
-                 auto_setup=True,
-                 dtype=theano.config.floatX):
-
-        self.W = None
-        self.current_mask = None
-
-        Layer.__init__(self,
-                       size,
-                       dim_proj,
-                       previous_layer=previous_layer,
-                       layer_number=layer_number,
-                       seed=seed,
-                       auto_setup=auto_setup,
-                       dtype=dtype)
-
-    def init_params(self, seed=123):
-        rng = numpy.random.RandomState(seed)
-
-        emb = rng.uniform(low=-.1, high=.1, size=(self.n_in, self.n_out))
-
-        self.W = theano.shared(value=emb, name='W_%s' % self.layer_number, borrow=True)
-
-    def get_layer_parameters(self):
-        return [self.W]
-
-    def get_mask(self):
-        return self.current_mask
-
-    def activate(self, x):
-        if self.previous_layer is None:
-            act0 = x
-        else:
-            act0 = self.previous_layer.activate(x)
-
-        activation = self.W[act0]
-
-        self.current_mask = T.ones_like(x) * (1 - T.eq(x, -1))
-
-        return activation
-
-    def get_weights(self):
-        weights = [self.W.get_value(borrow=True)]
-        return weights
-
-    def set_weights(self, parameters, layer_number):
-
-        assert len(parameters) == 1, 'Wrong number of parameters to be set to EmbbedingLayer!'
-
-        self.layer_number = layer_number
-        w = parameters[0].value
-
-        self.W = theano.shared(value=w, name='W_%s' % self.layer_number, borrow=True)
-
-
-class LSTM(Layer):
     def __init__(self,
                  n_in,
                  n_out,
@@ -132,13 +25,6 @@ class LSTM(Layer):
         self.return_sequences = return_sequences
         self.return_hidden_states = return_hidden_states
 
-        self.initial_state = None
-        self.reset_initial_state = True
-
-        self.W = None
-        self.R = None
-        self.b = None
-
         Layer.__init__(self,
                        n_in,
                        n_out,
@@ -147,25 +33,6 @@ class LSTM(Layer):
                        seed=seed,
                        auto_setup=auto_setup,
                        dtype=dtype)
-
-    def init_params(self, seed=123):
-
-        rng = numpy.random.RandomState(seed)
-
-        weights = rng.uniform(low=-.08, high=.08, size=(self.n_in, self.n_out * 4))
-        recurrent = rng.uniform(low=-.08, high=.08, size=(self.n_out, self.n_out * 4))
-        bias = rng.uniform(low=-.08, high=.08, size=(self.n_out * 4))
-
-        self.W = theano.shared(value=weights, name='W_%s' % self.layer_number, borrow=True)
-        self.R = theano.shared(value=recurrent, name='R_%s' % self.layer_number, borrow=True)
-        self.b = theano.shared(value=bias, name='b_%s' % self.layer_number, borrow=True)
-
-    def get_layer_parameters(self):
-        return [self.W, self.R, self.b]
-
-    def set_initial_state(self, initial_state):
-        self.initial_state = initial_state
-        self.reset_initial_state = False
 
     def get_mask(self):
         return None
@@ -197,6 +64,59 @@ class LSTM(Layer):
 
         activation = self._activate(act0)
         return activation
+
+    def _activate(self, x):
+        raise NotImplementedError
+
+
+class LSTM(RecurrentLayer):
+    def __init__(self,
+                 n_in,
+                 n_out,
+                 previous_layer=None,
+                 return_sequences=True,
+                 return_hidden_states=False,
+                 layer_number=1,
+                 seed=123,
+                 auto_setup=True,
+                 dtype=theano.config.floatX):
+
+        self.W = None
+        self.R = None
+        self.b = None
+
+        self.initial_state = None
+        self.reset_initial_state = True
+
+        RecurrentLayer.__init__(self,
+                                n_in,
+                                n_out,
+                                previous_layer=previous_layer,
+                                return_sequences=return_sequences,
+                                return_hidden_states=return_hidden_states,
+                                layer_number=layer_number,
+                                seed=seed,
+                                auto_setup=auto_setup,
+                                dtype=dtype)
+
+    def init_params(self, seed=123):
+
+        rng = numpy.random.RandomState(seed)
+
+        weights = rng.uniform(low=-.08, high=.08, size=(self.n_in, self.n_out * 4))
+        recurrent = rng.uniform(low=-.08, high=.08, size=(self.n_out, self.n_out * 4))
+        bias = rng.uniform(low=-.08, high=.08, size=(self.n_out * 4))
+
+        self.W = theano.shared(value=weights, name='W_%s' % self.layer_number, borrow=True)
+        self.R = theano.shared(value=recurrent, name='R_%s' % self.layer_number, borrow=True)
+        self.b = theano.shared(value=bias, name='b_%s' % self.layer_number, borrow=True)
+
+    def get_layer_parameters(self):
+        return [self.W, self.R, self.b]
+
+    def set_initial_state(self, initial_state):
+        self.initial_state = initial_state
+        self.reset_initial_state = False
 
     def _activate(self, x):
 
@@ -352,4 +272,147 @@ class LSTM(Layer):
 
         self.W = theano.shared(value=weights, name='W_%s' % self.layer_number, borrow=True)
         self.R = theano.shared(value=recs, name='R_%s' % self.layer_number, borrow=True)
+        self.b = theano.shared(value=bias, name='b_%s' % self.layer_number, borrow=True)
+
+
+class GRU(RecurrentLayer):
+
+    def __init__(self,
+                 n_in,
+                 n_out,
+                 previous_layer=None,
+                 return_sequences=True,
+                 return_hidden_states=False,
+                 layer_number=1,
+                 seed=123,
+                 auto_setup=True,
+                 dtype=theano.config.floatX):
+
+        self.W = None
+        self.U_i = None
+        self.U_z = None
+        self.U_r = None
+        self.b = None
+
+        self.initial_state = None
+        self.reset_initial_state = True
+
+        RecurrentLayer.__init__(self,
+                                n_in,
+                                n_out,
+                                previous_layer=previous_layer,
+                                return_sequences=return_sequences,
+                                return_hidden_states=return_hidden_states,
+                                layer_number=layer_number,
+                                seed=seed,
+                                auto_setup=auto_setup,
+                                dtype=dtype)
+
+    def init_params(self, seed=123):
+
+        rng = numpy.random.RandomState(seed)
+
+        weights = rng.uniform(low=-.08, high=.08, size=(self.n_in, self.n_out * 4))
+        r_i = rng.uniform(low=-.08, high=.08, size=(self.n_out, self.n_out))
+        r_z = rng.uniform(low=-.08, high=.08, size=(self.n_out, self.n_out))
+        r_r = rng.uniform(low=-.08, high=.08, size=(self.n_out, self.n_out))
+        bias = rng.uniform(low=-.08, high=.08, size=(self.n_out * 4))
+
+        self.W = theano.shared(value=weights, name='W_%s' % self.layer_number, borrow=True)
+        self.U_i = theano.shared(value=r_i, name='U_i_%s' % self.layer_number, borrow=True)
+        self.U_z = theano.shared(value=r_z, name='U_z_%s' % self.layer_number, borrow=True)
+        self.U_r = theano.shared(value=r_r, name='U_r_%s' % self.layer_number, borrow=True)
+        self.b = theano.shared(value=bias, name='b_%s' % self.layer_number, borrow=True)
+
+    def get_layer_parameters(self):
+        return [self.W, self.U_i, self.U_z, self.U_r, self.b]
+
+    def set_initial_state(self, initial_state):
+        self.initial_state = initial_state
+        self.reset_initial_state = False
+
+    def _activate(self, x):
+
+        mask = self.get_padded_shuffled_mask(x)
+        # input to block is (batch, time, input)
+        # we want it to be  (time, batch, input)
+        x = x.dimshuffle((1, 0, 2))
+
+        xs = T.dot(x, self.W) + self.b
+        xi, xz, xr = self._slice(xs)
+
+        if self.reset_initial_state:
+            initial_state = T.unbroadcast(T.alloc(
+                numpy.asarray(0., dtype=self.dtype),
+                x.shape[1], self.n_out
+            ))
+        else:
+            initial_state = self.initial_state
+
+        state, updates = theano.scan(
+                self._step,
+                sequences=[xi, xz, xr, mask],
+                outputs_info=[initial_state],
+                non_sequences=[self.U_i, self.U_z, self.U_r],
+                n_steps=x.shape[0]  # keep track of number of steps to return all computations
+        )
+
+        if self.return_sequences:
+            return state.dimshuffle((1, 0, 2))
+        else:
+            return state[-1]
+
+    def _step(self,
+              xi, xz, xr, m_,
+              s_,
+              ui, uz, ur):
+        s_prev = s_ * m_  # applying mask
+        zi = sigmoid(xz + T.dot(s_prev, uz))  # update gate
+        ri = sigmoid(xr + T.dot(s_prev, ur))  # reset gate
+        s_hat = tanh(xi + T.dot((ri * s_prev), ui))  # proposed new state
+        si = zi * s_hat + (1 - zi) * s_prev  # new state
+        return si
+
+    def _slice(self, m):
+        """
+        Slice a matrix into 4 parts. Inteded to be used when you have concatenated matrices and
+            wants to pre-compute activations.
+
+        Parameters:
+        -----------
+            m : theano.tensor
+                Symbolic representation of a mtrix of concatenated weights/biases.
+
+        """
+        n = self.n_out
+        if m.ndim == 3:
+            return m[:, :, 0 * n:1 * n], m[:, :, 1 * n:2 * n], m[:, :, 2 * n:3 * n]
+        else:
+            return m[:, 0 * n:1 * n], m[:, 1 * n:2 * n], m[:, 2 * n:3 * n]
+
+    def get_weights(self):
+
+        weights = [self.W.get_value(borrow=True),
+                   self.U_i.get_value(borrow=True),
+                   self.U_z.get_value(borrow=True),
+                   self.U_r.get_value(borrow=True),
+                   self.b.get_value(borrow=True)]
+
+        return weights
+
+    def set_weights(self, parameters, layer_number):
+
+        assert len(parameters) == 5, 'Wrong number of parameters to be set to GRU layer!'
+
+        self.layer_number = layer_number
+        weights = parameters[0].value
+        recs_i = parameters[1].value
+        recs_z = parameters[2].value
+        recs_r = parameters[3].value
+        bias = parameters[4].value
+
+        self.W = theano.shared(value=weights, name='W_%s' % self.layer_number, borrow=True)
+        self.U_i = theano.shared(value=recs_i, name='U_i_%s' % self.layer_number, borrow=True)
+        self.U_z = theano.shared(value=recs_z, name='U_z_%s' % self.layer_number, borrow=True)
+        self.U_r = theano.shared(value=recs_r, name='U_r_%s' % self.layer_number, borrow=True)
         self.b = theano.shared(value=bias, name='b_%s' % self.layer_number, borrow=True)

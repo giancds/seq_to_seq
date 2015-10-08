@@ -1,6 +1,6 @@
 import numpy
 
-from seq_to_seq.layers import Embedding, LSTM
+from seq_to_seq.layers_core import Embedding, LSTM
 from seq_to_seq.models import SequenceToSequence
 
 from utils import prepare_data, load_dictionary, load_and_convert_corpora
