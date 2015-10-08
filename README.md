@@ -7,3 +7,4 @@ Sutskever et al. (2014).
 
 * [NumPy](http://www.scipy.org/scipylib/download.html)
 * [Theano](http://deeplearning.net/software/theano/install.html)
+* [h5py](http://docs.h5py.org/en/latest/build.html)
