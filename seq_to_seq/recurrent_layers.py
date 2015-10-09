@@ -115,13 +115,13 @@ class LSTM(RecurrentLayer):
         n_cols = self.n_out * 4
 
         self.W = theano.shared(
-            value=rng.uniform(low=-.08, high=.08, size=(self.n_in, n_cols)),
+            value=rng.uniform(low=-.08, high=.08, size=(self.n_in, n_cols)).astype(self.dtype),
             name='W_%s' % self.layer_number, borrow=True, allow_downcast=True)
         self.R = theano.shared(
-            value=rng.uniform(low=-.08, high=.08, size=(self.n_out, n_cols)),
+            value=rng.uniform(low=-.08, high=.08, size=(self.n_out, n_cols)).astype(self.dtype),
             name='R_%s' % self.layer_number, borrow=True, allow_downcast=True)
         self.b = theano.shared(
-            value=rng.uniform(low=-.08, high=.08, size=n_cols),
+            value=rng.uniform(low=-.08, high=.08, size=n_cols).astype(self.dtype),
             name='b_%s' % self.layer_number, borrow=True, allow_downcast=True)
 
     def get_layer_parameters(self):
@@ -276,20 +276,22 @@ class GRU(RecurrentLayer):
 
         rng = numpy.random.RandomState(seed)
 
+        n_cols = self.n_out * 4
+
         self.W = theano.shared(
-            value=rng.uniform(low=-.08, high=.08, size=(self.n_in, self.n_out * 4)),
+            value=rng.uniform(low=-.08, high=.08, size=(self.n_in, n_cols)).astype(self.dtype),
             name='W_%s' % self.layer_number, borrow=True, allow_downcast=True)
         self.U_i = theano.shared(
-            value=rng.uniform(low=-.08, high=.08, size=(self.n_out, self.n_out)),
+            value=rng.uniform(low=-.08, high=.08, size=(self.n_out, self.n_out)).astype(self.dtype),
             name='U_i_%s' % self.layer_number, borrow=True, allow_downcast=True)
         self.U_z = theano.shared(
-            value=rng.uniform(low=-.08, high=.08, size=(self.n_out, self.n_out)),
+            value=rng.uniform(low=-.08, high=.08, size=(self.n_out, self.n_out)).astype(self.dtype),
             name='U_z_%s' % self.layer_number, borrow=True, allow_downcast=True)
         self.U_r = theano.shared(
-            value=rng.uniform(low=-.08, high=.08, size=(self.n_out, self.n_out)),
+            value=rng.uniform(low=-.08, high=.08, size=(self.n_out, self.n_out)).astype(self.dtype),
             name='U_r_%s' % self.layer_number, borrow=True, allow_downcast=True)
         self.b = theano.shared(
-            value=rng.uniform(low=-.08, high=.08, size=(self.n_out * 4)),
+            value=rng.uniform(low=-.08, high=.08, size=(self.n_out * 4)).astype(self.dtype),
             name='b_%s' % self.layer_number, borrow=True, allow_downcast=True)
 
     def get_layer_parameters(self):
