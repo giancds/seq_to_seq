@@ -20,16 +20,9 @@ def prepare_data(seqs_x, seqs_y, maxlen=None):
     x_padded = pad_sequences(seqs_x, maxlen_x, nb_samples)
     y_padded = pad_sequences(seqs_y, maxlen_y, nb_samples)
 
-    # x_mask = (x_pad > -1).astype('int8')
-    # y_mask = (y_pad > -1).astype('int8')
-
     x_padded = numpy.asarray(x_padded)
     y_padded = numpy.asarray(y_padded)
-    #
-    # x_mask = numpy.asarray(x_mask)
-    # y_mask = numpy.asarray(y_mask)
 
-    # return x_pad, x_mask, y_pad, y_mask
     return x_padded, y_padded
 
 
@@ -313,16 +306,21 @@ class DatasetIterator:
 
         try:
             while True:
+
                 ss = self.source.readline()
-                if ss == "":
+                tt = self.target.readline()
+
+                if ss == "" and tt == "":
+                    self.reset()
+                elif ss == "" and tt != "":
                     raise IOError
+                elif ss != "" and tt == "":
+                    raise IOError
+
                 ss = ss.strip().split()
                 ss.append('<EOS>')
                 ss = word_to_index(ss, self.source_dict)
 
-                tt = self.target.readline()
-                if tt == "":
-                    raise IOError
                 tt = tt.strip().split()
                 tt += ['<EOS>']
                 tt = word_to_index(tt, self.target_dict)
@@ -336,6 +334,9 @@ class DatasetIterator:
 
                 if len(source) >= self.batch_size or len(target) >= self.batch_size:
                     break
+
+            source, target = prepare_data(source, target, maxlen=self.maxlen)
+
         except IOError:
             self.end_of_data = True
 
@@ -343,7 +344,5 @@ class DatasetIterator:
             self.end_of_data = False
             self.reset()
             raise StopIteration
-
-        source, target = prepare_data(source, target, maxlen=self.maxlen)
 
         return source, target

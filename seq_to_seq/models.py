@@ -144,12 +144,13 @@ class SequenceToSequence(object):
         self.train_fn = theano.function(
             inputs=[source, target],
             outputs=cost,
-            updates=backprop
+            updates=backprop,
+            allow_input_downcast=True
         )
 
         # function to get the cost using training and test sets
         self.validate_fn = theano.function(
-            inputs=[source, target], outputs=cost
+            inputs=[source, target], outputs=cost, allow_input_downcast=True
         )
 
     def _setup_translate(self):
@@ -249,7 +250,6 @@ class SequenceToSequence(object):
         for minibatch_index in xrange(n_batches):
             time1 = time.time()
             train_x, train_y = train_data.next()
-            # print 'Minibatch # %i' % minibatch_index
             minibatch_avg_cost = train_fn(train_x, train_y)
             total_loss += minibatch_avg_cost
             time2 = time.time()
@@ -258,7 +258,7 @@ class SequenceToSequence(object):
                     'Examples %i/%i - '
                     'Avg. loss: %.8f - '
                     'Time per batch: %3.5f' %
-                    ((minibatch_index + 1) * self.batch_size, (n_samples * n_batches),
+                    ((minibatch_index + 1) * self.batch_size, n_samples,
                      total_loss / (minibatch_index + 1),
                      (time2 - time1)))
         return total_loss
