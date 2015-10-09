@@ -231,8 +231,7 @@ class SequenceToSequence(object):
                 self.save_weights(new_file, overwrite=overwrite)
 
             # print info
-            print '\nEpoch %i averaged loss %3.10f\n' % (epoch + 1, (total_loss / n_train_batches))
-            print '\nEpoch %i elapsed time %3.5f' % (epoch + 1, (epoch_time_2 - epoch_time_1))
+            print 'Epoch %i elapsed time %3.5f' % (epoch + 1, (epoch_time_2 - epoch_time_1))
 
         train_time_2 = time.time()
 
@@ -258,7 +257,7 @@ class SequenceToSequence(object):
                     'Examples %i/%i - '
                     'Avg. loss: %.8f - '
                     'Time per batch: %3.5f' %
-                    ((minibatch_index + 1) * self.batch_size, n_samples,
+                    ((minibatch_index + 1) * self.batch_size, (self.batch_size * n_batches),
                      total_loss / (minibatch_index + 1),
                      (time2 - time1)))
         return total_loss
