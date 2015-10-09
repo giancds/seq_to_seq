@@ -19,6 +19,8 @@ class SequenceToSequence(object):
                  target_v_size=100000,
                  auto_setup=False):
 
+        print 'Initializing model...\n'
+
         self.time1 = time.time()
 
         self.encoder = encoder
