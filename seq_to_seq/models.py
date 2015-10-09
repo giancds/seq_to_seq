@@ -19,6 +19,8 @@ class SequenceToSequence(object):
                  target_v_size=100000,
                  auto_setup=False):
 
+        self.time1 = time.time()
+
         self.encoder = encoder
         self.decoder = decoder
 
@@ -94,6 +96,10 @@ class SequenceToSequence(object):
         self.batch_size = batch_size
         self._setup_train()
         self._setup_translate()
+
+        time2 = time.time()
+
+        print 'Model initialization took %3.5f seconds\n' % (time2 - self.time1)
 
     def _setup_train(self, optimizer=None):
 
