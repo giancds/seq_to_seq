@@ -18,7 +18,7 @@ def negative_log_likelihood(y_pred, y_true):
             (mini)batch.
 
                 mean( log ( P (y | X, W, b) ) )
-                    - computed for all given  examples
+                    - computed for all given  experiments
 
         Notes
         -----

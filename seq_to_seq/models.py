@@ -90,6 +90,7 @@ class SequenceToSequence(object):
         return self.encoder + self.decoder
 
     def setup(self, batch_size=128):
+        print '\nI\'m setting up the model now...\n'
         self.batch_size = batch_size
         self._setup_train()
         self._setup_translate()
@@ -120,10 +121,14 @@ class SequenceToSequence(object):
         cost = cost.sum(axis=0)
         cost = cost.mean()
 
+        print 'Peforming automatic differentiation...'
+
         gradients = optimizer.get_gradients(cost, self.get_parameters())
         gradients = self._apply_hard_constraint_on_gradients(gradients)
         #
         backprop = optimizer.get_updates(gradients, self.get_parameters())
+
+        print 'Compiling training functions...'
 
         # function to get the encoded sentence
         self.encode_f = theano.function(
@@ -175,55 +180,42 @@ class SequenceToSequence(object):
         return gradients
 
     def train(self,
-              train_set_x,
-              train_set_y,
-              valid_set_x=None,
-              valid_set_y=None,
+              train_data,
+              valid_data=None,
               n_epochs=10,
+              n_train_samples=-1,
+              n_valid_samples=-1,
               print_train_info=False,
               save_model=True,
               keep_old_models=False,
               filepath='sequence_to_sequence_model.hp5y',
-              overwrite=True,
-              seed=123):
-
-        if not self.auto_setup:
-            self.setup()
-
-        # get the number of samples on each dataset
-        n_train_samples = len(train_set_x)
-        n_valid_samples = len(valid_set_x) if valid_set_x is not None else 0
-
-        n_train_batches = n_train_samples / self.batch_size
-        n_valid_batches = n_valid_samples / self.batch_size
+              overwrite=True):
 
         train_time_1 = time.time()
+
+        train_data.set_batch_size(self.batch_size)
+        valid_data.set_batch_size(self.batch_size)
+
+        n_train_batches = n_train_samples / self.batch_size if n_train_samples > -1 else 0
+        n_valid_batches = n_valid_samples / self.batch_size if n_valid_samples > -1 else 0
 
         for epoch in xrange(n_epochs):
 
             total_loss = 0.
-
-            # shuffle the train data and labels
-            numpy.random.seed(seed+epoch)
-            numpy.random.shuffle(train_set_x)
-            numpy.random.seed(seed+epoch)
-            numpy.random.shuffle(train_set_y)
 
             # get epoch start time
             epoch_time_1 = time.time()
 
             # perform the minibatches and accumulate the total loss
             total_loss += self._perform_minibatches(self.train_fn,
-                                                    train_set_x,
-                                                    train_set_y,
+                                                    train_data,
                                                     epoch,
                                                     n_samples=n_train_samples,
                                                     n_batches=n_train_batches,
                                                     print_train_info=print_train_info)
 
             valid_loss = self._evaluate_epoch(self.validate_fn,
-                                              valid_set_x,
-                                              valid_set_y,
+                                              valid_data,
                                               n_batches=n_valid_batches)
 
             # get epoch end tme
@@ -248,7 +240,7 @@ class SequenceToSequence(object):
 
         print '\nTotal training time: %3.5f' % (train_time_2 - train_time_1)
 
-    def _perform_minibatches(self, train_fn, train_set_x, train_set_y, epoch, n_samples, n_batches,
+    def _perform_minibatches(self, train_fn, train_data, epoch, n_samples, n_batches,
                              print_train_info=False):
 
         print '\nEpoch %i \nI am performing minibatches now...' % (epoch + 1)
@@ -256,7 +248,7 @@ class SequenceToSequence(object):
         total_loss = 0
         for minibatch_index in xrange(n_batches):
             time1 = time.time()
-            train_x, train_y = self._slice_batch_data(train_set_x, train_set_y, minibatch_index)
+            train_x, train_y = train_data.next()
             # print 'Minibatch # %i' % minibatch_index
             minibatch_avg_cost = train_fn(train_x, train_y)
             total_loss += minibatch_avg_cost
@@ -266,12 +258,12 @@ class SequenceToSequence(object):
                     'Examples %i/%i - '
                     'Avg. loss: %.8f - '
                     'Time per batch: %3.5f' %
-                    ((minibatch_index + 1) * self.batch_size, n_samples,
+                    ((minibatch_index + 1) * self.batch_size, (n_samples * n_batches),
                      total_loss / (minibatch_index + 1),
                      (time2 - time1)))
         return total_loss
 
-    def _evaluate_epoch(self, eval_fn, dataset_x, dataset_y, n_batches):
+    def _evaluate_epoch(self, eval_fn, valid_data, n_batches):
         """
         Function to get the total loss (cost) of the network parameters at a given
             epoch.
@@ -292,7 +284,7 @@ class SequenceToSequence(object):
         loss = 0
 
         for i in xrange(n_batches):
-            x, y = self._slice_batch_data(dataset_x, dataset_y, i)
+            x, y = valid_data.next()
             loss += eval_fn(x, y)
         # loss = [eval_fn(i) for i in xrange(n_batches)]
         mean_loss = loss / n_batches

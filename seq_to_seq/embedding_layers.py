@@ -30,9 +30,9 @@ class Embedding(Layer):
     def init_params(self, seed=123):
         rng = numpy.random.RandomState(seed)
 
-        emb = rng.uniform(low=-.1, high=.1, size=(self.n_in, self.n_out))
-
-        self.W = theano.shared(value=emb, name='W_%s' % self.layer_number, borrow=True)
+        self.W = theano.shared(value=rng.uniform(low=-.1, high=.1, size=(self.n_in, self.n_out)),
+                               name='W_%s' % self.layer_number,
+                               borrow=True)
 
     def get_layer_parameters(self):
         return [self.W]

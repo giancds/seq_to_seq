@@ -34,6 +34,15 @@ class RecurrentLayer(Layer):
                        auto_setup=auto_setup,
                        dtype=dtype)
 
+    def init_params(self, seed=123):
+        raise NotImplementedError
+
+    def get_weights(self):
+        raise NotImplementedError
+
+    def set_weights(self, parameters, layer_number):
+        raise NotImplementedError
+
     def get_mask(self):
         return None
 
@@ -103,13 +112,17 @@ class LSTM(RecurrentLayer):
 
         rng = numpy.random.RandomState(seed)
 
-        weights = rng.uniform(low=-.08, high=.08, size=(self.n_in, self.n_out * 4))
-        recurrent = rng.uniform(low=-.08, high=.08, size=(self.n_out, self.n_out * 4))
-        bias = rng.uniform(low=-.08, high=.08, size=(self.n_out * 4))
+        n_cols = self.n_out * 4
 
-        self.W = theano.shared(value=weights, name='W_%s' % self.layer_number, borrow=True)
-        self.R = theano.shared(value=recurrent, name='R_%s' % self.layer_number, borrow=True)
-        self.b = theano.shared(value=bias, name='b_%s' % self.layer_number, borrow=True)
+        self.W = theano.shared(
+            value=rng.uniform(low=-.08, high=.08, size=(self.n_in, n_cols)),
+            name='W_%s' % self.layer_number, borrow=True, allow_downcast=True)
+        self.R = theano.shared(
+            value=rng.uniform(low=-.08, high=.08, size=(self.n_out, n_cols)),
+            name='R_%s' % self.layer_number, borrow=True, allow_downcast=True)
+        self.b = theano.shared(
+            value=rng.uniform(low=-.08, high=.08, size=n_cols),
+            name='b_%s' % self.layer_number, borrow=True, allow_downcast=True)
 
     def get_layer_parameters(self):
         return [self.W, self.R, self.b]
@@ -197,16 +210,7 @@ class LSTM(RecurrentLayer):
         return y, c
 
     def _slice(self, m):
-        """
-        Slice a matrix into 4 parts. Inteded to be used when you have concatenated matrices and
-            wants to pre-compute activations.
 
-        Parameters:
-        -----------
-            m : theano.tensor
-                Symbolic representation of a mtrix of concatenated weights/biases.
-
-        """
         n = self.n_out
         if m.ndim == 3:
             return m[:, :, 0 * n:1 * n], m[:, :, 1 * n:2 * n], \
@@ -215,54 +219,14 @@ class LSTM(RecurrentLayer):
             return m[:, 0 * n:1 * n], m[:, 1 * n:2 * n], m[:, 2 * n:3 * n], m[:, 3 * n:4 * n]
 
     def get_weights(self):
-        """
-        Return the layer's list of parameters.
 
-        Parameters:
-        -----------
-
-            tied_weights : boolean
-                A flag indicating if the layer is sharing weights with other layers. If True, the
-                    function will return only the bias. Default to False (i.e., returns both
-                    weights and bias).
-
-        Returns:
-        --------
-            weights : list
-                A list containing either weights (pos0) and bias (pos1) or only bias (pos0).
-        """
         weights = [self.W.get_value(borrow=True),
                    self.R.get_value(borrow=True),
                    self.b.get_value(borrow=True)]
         return weights
 
     def set_weights(self, parameters, layer_number):
-        """
-        This function receives the parameter list and sets to the right variables.
 
-        Notes:
-        ------
-            1. It is designed to be used by the save and load functions of Networks and Encoders
-                models. Need modification if want to use with different modules.
-
-            2. The parameters is a list of h5py datasets. To get the actual values, use the
-                built-in '.value' function of these datasets. Example:
-                    parameters[0].value
-
-        Parameters:
-        -----------
-
-            parameters : list of h5py datasets
-                List containing the h5py datasets to be used to set the layer's weights and bias.
-
-            layer_number : int
-                The layer's position (1-based) in the computation path. Mainly used to set theano's
-                    shared variables names.
-
-        Returns:
-        -------
-
-        """
         assert len(parameters) == 3, 'Wrong number of parameters to be set to LSTM layer!'
 
         self.layer_number = layer_number
@@ -270,9 +234,9 @@ class LSTM(RecurrentLayer):
         recs = parameters[1].value
         bias = parameters[2].value
 
-        self.W = theano.shared(value=weights, name='W_%s' % self.layer_number, borrow=True)
-        self.R = theano.shared(value=recs, name='R_%s' % self.layer_number, borrow=True)
-        self.b = theano.shared(value=bias, name='b_%s' % self.layer_number, borrow=True)
+        self.W = theano.shared(value=weights, name='W_%s' % self.layer_number, borrow=True, allow_downcast=True)
+        self.R = theano.shared(value=recs, name='R_%s' % self.layer_number, borrow=True, allow_downcast=True)
+        self.b = theano.shared(value=bias, name='b_%s' % self.layer_number, borrow=True, allow_downcast=True)
 
 
 class GRU(RecurrentLayer):
@@ -312,17 +276,21 @@ class GRU(RecurrentLayer):
 
         rng = numpy.random.RandomState(seed)
 
-        weights = rng.uniform(low=-.08, high=.08, size=(self.n_in, self.n_out * 4))
-        r_i = rng.uniform(low=-.08, high=.08, size=(self.n_out, self.n_out))
-        r_z = rng.uniform(low=-.08, high=.08, size=(self.n_out, self.n_out))
-        r_r = rng.uniform(low=-.08, high=.08, size=(self.n_out, self.n_out))
-        bias = rng.uniform(low=-.08, high=.08, size=(self.n_out * 4))
-
-        self.W = theano.shared(value=weights, name='W_%s' % self.layer_number, borrow=True)
-        self.U_i = theano.shared(value=r_i, name='U_i_%s' % self.layer_number, borrow=True)
-        self.U_z = theano.shared(value=r_z, name='U_z_%s' % self.layer_number, borrow=True)
-        self.U_r = theano.shared(value=r_r, name='U_r_%s' % self.layer_number, borrow=True)
-        self.b = theano.shared(value=bias, name='b_%s' % self.layer_number, borrow=True)
+        self.W = theano.shared(
+            value=rng.uniform(low=-.08, high=.08, size=(self.n_in, self.n_out * 4)),
+            name='W_%s' % self.layer_number, borrow=True, allow_downcast=True)
+        self.U_i = theano.shared(
+            value=rng.uniform(low=-.08, high=.08, size=(self.n_out, self.n_out)),
+            name='U_i_%s' % self.layer_number, borrow=True, allow_downcast=True)
+        self.U_z = theano.shared(
+            value=rng.uniform(low=-.08, high=.08, size=(self.n_out, self.n_out)),
+            name='U_z_%s' % self.layer_number, borrow=True, allow_downcast=True)
+        self.U_r = theano.shared(
+            value=rng.uniform(low=-.08, high=.08, size=(self.n_out, self.n_out)),
+            name='U_r_%s' % self.layer_number, borrow=True, allow_downcast=True)
+        self.b = theano.shared(
+            value=rng.uniform(low=-.08, high=.08, size=(self.n_out * 4)),
+            name='b_%s' % self.layer_number, borrow=True, allow_downcast=True)
 
     def get_layer_parameters(self):
         return [self.W, self.U_i, self.U_z, self.U_r, self.b]
@@ -411,8 +379,13 @@ class GRU(RecurrentLayer):
         recs_r = parameters[3].value
         bias = parameters[4].value
 
-        self.W = theano.shared(value=weights, name='W_%s' % self.layer_number, borrow=True)
-        self.U_i = theano.shared(value=recs_i, name='U_i_%s' % self.layer_number, borrow=True)
-        self.U_z = theano.shared(value=recs_z, name='U_z_%s' % self.layer_number, borrow=True)
-        self.U_r = theano.shared(value=recs_r, name='U_r_%s' % self.layer_number, borrow=True)
-        self.b = theano.shared(value=bias, name='b_%s' % self.layer_number, borrow=True)
+        self.W = theano.shared(value=weights, name='W_%s' % self.layer_number, borrow=True,
+                               allow_downcast=True)
+        self.U_i = theano.shared(value=recs_i, name='U_i_%s' % self.layer_number, borrow=True,
+                                 allow_downcast=True)
+        self.U_z = theano.shared(value=recs_z, name='U_z_%s' % self.layer_number, borrow=True,
+                                 allow_downcast=True)
+        self.U_r = theano.shared(value=recs_r, name='U_r_%s' % self.layer_number, borrow=True,
+                                 allow_downcast=True)
+        self.b = theano.shared(value=bias, name='b_%s' % self.layer_number, borrow=True,
+                               allow_downcast=True)

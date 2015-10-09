@@ -266,3 +266,84 @@ def load_indexed_bilingual_corpora(source_language_file, target_language_file,
             target_corpora.append(array)
 
     return source_corpora, target_corpora
+
+
+class DatasetIterator:
+    def __init__(self,
+                 source,
+                 target,
+                 source_dict=None,
+                 target_dict=None,
+                 batch_size=128,
+                 maxlen=None,
+                 encoding='utf_8'):
+
+        assert source_dict is not None
+        assert target_dict is not None
+
+        self.source = codecs.open(source, 'r', encoding=encoding)
+        self.target = codecs.open(target, 'r', encoding=encoding)
+        self.source_dict = source_dict
+        self.target_dict = target_dict
+
+        self.batch_size = batch_size
+        self.maxlen = maxlen
+
+        self.end_of_data = False
+
+    def __iter__(self):
+        return self
+
+    def reset(self):
+        self.source.seek(0)
+        self.target.seek(0)
+
+    def set_batch_size(self, batch_size):
+        self.batch_size = batch_size
+
+    def next(self):
+        if self.end_of_data:
+            self.end_of_data = False
+            self.reset()
+            raise StopIteration
+
+        source = []
+        target = []
+        ii = 0
+
+        try:
+            while True:
+                ss = self.source.readline()
+                if ss == "":
+                    raise IOError
+                ss = ss.strip().split()
+                ss.append('<EOS>')
+                ss = word_to_index(ss, self.source_dict)
+
+                tt = self.target.readline()
+                if tt == "":
+                    raise IOError
+                tt = tt.strip().split()
+                tt += ['<EOS>']
+                tt = word_to_index(tt, self.target_dict)
+
+                if self.maxlen is not None:
+                    if len(ss) > self.maxlen and len(tt) > self.maxlen:
+                        continue
+
+                source.append(ss)
+                target.append(tt)
+
+                if len(source) >= self.batch_size or len(target) >= self.batch_size:
+                    break
+        except IOError:
+            self.end_of_data = True
+
+        if len(source) <= 0 or len(target) <= 0:
+            self.end_of_data = False
+            self.reset()
+            raise StopIteration
+
+        source, target = prepare_data(source, target, maxlen=self.maxlen)
+
+        return source, target
