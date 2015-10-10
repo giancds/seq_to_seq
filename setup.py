@@ -3,7 +3,7 @@ from setuptools import find_packages
 
 setup(
       name='Sequence-to-Sequence',
-      version='0.0.0.4',
+      version='0.0.0.5',
       description='Experiment with Sequence to Sequence Learning with Neural Networks',
       author='Giancarlo Salton',
       author_email='giancarlo.salton@mydit.ie',

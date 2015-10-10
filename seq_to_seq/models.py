@@ -15,12 +15,14 @@ class SequenceToSequence(object):
     def __init__(self,
                  encoder,
                  decoder,
+                 output=None,
                  source_v_size=100000,
                  target_v_size=100000,
                  auto_setup=False):
 
         self.encoder = encoder
         self.decoder = decoder
+        self.output = output
 
         self._build_layer_sequence()
 
@@ -68,6 +70,8 @@ class SequenceToSequence(object):
                 previous = self.decoder[l]
             ln += 1
 
+        self.output.set_layer_number(ln)
+
     def get_parameters(self):
         """
 
@@ -81,10 +85,16 @@ class SequenceToSequence(object):
         for layer in self.decoder:
             parameters += layer.get_layer_parameters()
 
+        if self.output is not None:
+            parameters += self.output.get_layer_parameters()
+
         return parameters
 
     def get_layers(self):
-        return self.encoder + self.decoder
+        if self.output is not None:
+            return self.encoder + self.decoder + [self.output]
+        else:
+            return self.encoder + self.decoder
 
     def setup(self, batch_size=128, optimizer=None):
         print '\nI\'m setting up the model now...\n'
@@ -107,8 +117,11 @@ class SequenceToSequence(object):
         decoded = self.decoder[-1].activate(target)
 
         # reshape the decoded vectors so it is possible to apply softmax and keep the dimensions
-        shape = decoded.shape
-        probs = T.nnet.softmax(decoded.reshape([shape[0]*shape[1], shape[2]]))
+        if self.output is None:
+            shape = decoded.shape
+            probs = T.nnet.softmax(decoded.reshape([shape[0]*shape[1], shape[2]]))
+        else:
+            probs = self.output.activate(decoded)
 
         # cost
         y_flat = target.flatten()

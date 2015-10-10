@@ -1,12 +1,4 @@
-import numpy
 import theano
-
-import theano.tensor as T
-
-import activations
-
-sigmoid = activations.get('sigmoid')
-tanh = activations.get('tanh')
 
 
 class Layer(object):
@@ -53,4 +45,7 @@ class Layer(object):
         raise NotImplementedError
 
     def set_weights(self, parameters, layer_number):
+        raise NotImplementedError
+
+    def get_layer_parameters(self):
         raise NotImplementedError

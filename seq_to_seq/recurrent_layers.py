@@ -77,6 +77,9 @@ class RecurrentLayer(Layer):
     def _activate(self, x):
         raise NotImplementedError
 
+    def get_layer_parameters(self):
+        raise NotImplementedError
+
 
 class LSTM(RecurrentLayer):
     def __init__(self,
@@ -234,9 +237,12 @@ class LSTM(RecurrentLayer):
         recs = parameters[1].value
         bias = parameters[2].value
 
-        self.W = theano.shared(value=weights, name='W_%s' % self.layer_number, borrow=True, allow_downcast=True)
-        self.R = theano.shared(value=recs, name='R_%s' % self.layer_number, borrow=True, allow_downcast=True)
-        self.b = theano.shared(value=bias, name='b_%s' % self.layer_number, borrow=True, allow_downcast=True)
+        self.W = theano.shared(value=weights, name='W_%s' % self.layer_number, borrow=True,
+                               allow_downcast=True)
+        self.R = theano.shared(value=recs, name='R_%s' % self.layer_number, borrow=True,
+                               allow_downcast=True)
+        self.b = theano.shared(value=bias, name='b_%s' % self.layer_number, borrow=True,
+                               allow_downcast=True)
 
 
 class GRU(RecurrentLayer):
