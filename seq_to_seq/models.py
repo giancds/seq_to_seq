@@ -68,9 +68,6 @@ class SequenceToSequence(object):
                 previous = self.decoder[l]
             ln += 1
 
-        # self.output_layer.set_previous_layer(previous)
-        # self.output_layer.set_layer_number(ln)
-
     def get_parameters(self):
         """
 
@@ -89,10 +86,10 @@ class SequenceToSequence(object):
     def get_layers(self):
         return self.encoder + self.decoder
 
-    def setup(self, batch_size=128):
+    def setup(self, batch_size=128, optimizer=None):
         print '\nI\'m setting up the model now...\n'
         self.batch_size = batch_size
-        self._setup_train()
+        self._setup_train(optimizer)
         self._setup_translate()
 
     def _setup_train(self, optimizer=None):

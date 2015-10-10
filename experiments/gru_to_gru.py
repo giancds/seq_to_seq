@@ -12,6 +12,7 @@ This script used GRU units instead of LSTM in the hidden layers.
 import time
 from seq_to_seq.embedding_layers import Embedding
 from seq_to_seq.models import SequenceToSequence
+from seq_to_seq.optimization import Adadelta
 from seq_to_seq.recurrent_layers import GRU
 
 from seq_to_seq.utils import DatasetIterator, load_dictionary
@@ -70,8 +71,11 @@ seq = SequenceToSequence(encoder=encoder,
                          source_v_size=en_v_size,
                          target_v_size=pt_v_size)
 
+# set optimizer
+optimizer = Adadelta()
+
 # set up the model
-seq.setup(batch_size)
+seq.setup(batch_size=batch_size, optimizer=optimizer)
 
 time2 = time.time()
 print 'Initialization took %3.5f seconds. \n' % (time2 - time1)
