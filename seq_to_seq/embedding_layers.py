@@ -7,13 +7,13 @@ from seq_to_seq.layers_core import Layer
 
 class Embedding(Layer):
     """
-    Init the Embedding class.
+    Embedding class.
 
     :param size: int
         The size of the layer (i.e., the number of rows, the size of the input vocabulary).
 
     :param dim_proj: int
-        The size of the projection (i.e., the number of columns. This is the size of the vector
+        The size of the projection (i.e., the number of columns). This is the size of the vector
             that will represent each of the inputs.
 
     :param previous_layer: Layer object
@@ -30,6 +30,7 @@ class Embedding(Layer):
             to the user to call it explicitly.
 
     :param dtype: theano.config.floatX
+        Type of floating point to be used.
 
     :return:
     """
@@ -127,7 +128,8 @@ class Embedding(Layer):
 
     def get_weights(self):
         """
-        Return a list containing the actual values of the of the layer's parameters.
+        Return a list containing the actual values of the of the layer's parameters. For this
+            layer it will be a list of length 1 (just weights).
 
         :return: list
             A list containing the numpy.ndarrays representing the current weights of the layer.

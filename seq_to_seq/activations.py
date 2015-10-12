@@ -6,6 +6,7 @@ Module containing activation functions to be used in layers of neural networks.
     Currently implementing:
         Hyperbolic Tangent (tanh)
         Identity (return the input without transforming it)
+        REctified Linear Unit (RELU)
         Sigmoid  (logistic)
         Softmax
 """
@@ -14,17 +15,13 @@ import theano
 
 
 def get(act='tanh'):
-    """Function to return the correct activation function as specified by the
-    parameters.
+    """
+    Function to return the correct activation function as specified by the parameters.
 
-   Parameters
-    ----------
-     act : string
+    :param: act : string
         Name of the activation to return.
 
-    Returns
-    -------
-    func: function
+    :return: func: function
         The activation function specified by the parameter.
     """
     func = None
@@ -49,14 +46,10 @@ def identity(input_to_function):
     Identity activation. Return the same input to the unit without any
         modifications. Usually aplied to InputLayers.
 
-   Parameters
-    ----------
-     input_to_function : theano.tensor
+    :param: input_to_function : theano.tensor
         Symbolic matrix (or vector) corresponding to the input.
 
-    Returns
-    -------
-    theano.tensor
+    :return: theano.tensor
         Symbolic matrix (or vector) corresponding to the input.
 
     """
@@ -65,17 +58,13 @@ def identity(input_to_function):
 
 def relu(input_to_function):
     """
-        Rectified linear activation. The multiplication in the step will turn all the negative
+    Rectified linear activation. The multiplication in the step will turn all the negative
             values to 0.
 
-       Parameters
-        ----------
-          input_to_function : theano.tensor
-            Symbolic matrix (or vector) corresponding to the input.
+    :param: input_to_function : theano.tensor
+        Symbolic matrix (or vector) corresponding to the input.
 
-        Returns
-        -------
-        theano.tensor
+    :return: theano.tensor
          Symbolic matrix (or vector) corresponding to the activation of the
             layer.
 
@@ -86,19 +75,13 @@ def relu(input_to_function):
 
 def sigmoid(input_to_function):
     """
-        Sigmoid (a.k.a logistic) as defined in theano.tensor package. Apply the
-            function element-wise.
+    Sigmoid (a.k.a logistic) as defined in theano.tensor package. Apply the function element-wise.
 
-       Parameters
-        ----------
-          input_to_function : theano.tensor
-            Symbolic matrix (or vector) corresponding to the input.
+    :param: input_to_function : theano.tensor
+        Symbolic matrix (or vector) corresponding to the input.
 
-        Returns
-        -------
-        theano.tensor
-         Symbolic matrix (or vector) corresponding to the activation of the
-            layer.
+    :return:  theano.tensor
+        Symbolic matrix (or vector) corresponding to the activation of the layer.
 
         """
     return T.nnet.sigmoid(input_to_function)
@@ -106,44 +89,32 @@ def sigmoid(input_to_function):
 
 def softmax(input_to_function):
     """
-        Softmax activation as defined in theano.tensor package. Apply the
-            function element-wise. Generally used as the last layer activation
-            (output) as it can be interpreted as a probability distribution over
-             the labels (i.e., the probability of  the data taking a certain label).
+    Softmax activation as defined in theano.tensor package. Apply the function element-wise.
+        Generally used as the last layer activation (output) as it can be interpreted as a
+        probability distribution over the labels (i.e., the probability of the data taking a
+        certain label).
 
-       Parameters
-        ----------
-        input_to_function : theano.tensor
-            Symbolic matrix (or vector) corresponding to the input.
+    :param: input_to_function : theano.tensor
+        Symbolic matrix (or vector) corresponding to the input.
 
-        Returns
-        -------
-        theano.tensor
+    :return: theano.tensor
            Softmax activation applyed element-wise to the array_like input..
-        """
+
+    """
     x = input_to_function
-    # z = T.exp(x - x.max(axis=-1, keepdims=True))
-    # sftmx = z / z.sum(axis=-1, keepdims=True)
-    # return sftmx
     sftmx = T.nnet.softmax(x)
     return sftmx
 
 
 def tanh(input_to_function):
     """
-        Hyperbolic tangent as defined in theano.tensor package. Apply the
-            function element-wise.
+    Hyperbolic tangent as defined in theano.tensor package. Apply the function element-wise.
 
-       Parameters
-        ----------
-          input_to_function : theano.tensor
-            Symbolic matrix (or vector) corresponding to the input.
+    :param: input_to_function : theano.tensor
+        Symbolic matrix (or vector) corresponding to the input.
 
-        Returns
-        -------
-        theano.tensor
-            Symbolic matrix (or vector) corresponding to the activation of the
-                layer.
-        """
+    :return: theano.tensor
+        Symbolic matrix (or vector) corresponding to the activation of the layer.
+
+    """
     return T.tanh(input_to_function)
-

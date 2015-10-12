@@ -7,7 +7,7 @@ import theano
 import theano.tensor as T
 import time
 
-from seq_to_seq import objectives, optimization, utils
+from seq_to_seq import optimization, utils
 
 
 class SequenceToSequence(object):

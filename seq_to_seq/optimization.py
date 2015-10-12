@@ -34,17 +34,13 @@ class Optimizer(object):
         """
         Return the gradients in symbolic format following Theano's conventions.
 
-        Parameters:
-        ----------
-            cost : theano.tensor
-                    Objective function defined by symbols.
+        :param: cost : theano.tensor
+            Objective function defined by symbols.
 
-            parameters : list if theano.shared
-                Parameters (weights and bias from the model)
+        :param: parameters : list if theano.shared
+            Parameters (weights and bias from the model)
 
-        Returns:
-        -------
-            gradients : list of theano.tensor
+        :return: gradients : list of theano.tensor
                 The gradients with respect to the parameters supplied to the function.
 
         """
@@ -54,6 +50,18 @@ class Optimizer(object):
     def _share_zeroed_parameter(self, parameters, name, dtype=theano.config.floatX):
         """
         Function to create theano shared variables from the current model's parameters.
+
+        :param: parameters : list
+            The list of parameters to be used to create theano shared variables.
+
+        :param: name : string
+            The string representing the 'model' for the name of the created theano shared variables.
+
+        :param: dtype : theano.config
+            The type of floating point to be used.
+
+        :return: shared : theano.shared
+            The theano shared variables created from the parameters passed as argument.
         """
         if len(parameters) > 1:
             shared = [theano.shared(p.get_value() * numpy.asarray(0., dtype=dtype), name=name % p)
@@ -68,17 +76,13 @@ class Optimizer(object):
         Function to set the current epoch number. It will be used to perform learning rate
             annealing (mainly on SGD - Stochastic Gradient Descent).
 
-        epoch : int
+        :param: epoch : int
             The current epoch number.
 
         """
         self.current_epoch = epoch
 
     def get_updates(self, cost, parameters):
-        """
-        Abstract method to get parameter updates for the optimization process.
-
-        """
         raise NotImplementedError
 
 
@@ -96,37 +100,33 @@ class Adadelta(Optimizer):
 
                 http://deeplearning.net/tutorial/lstm.html
 
-        2. For more information, see Zeiler's (2012) paper:
+        2. For more information, see also Zeiler's (2012) paper:
 
             http://arxiv.org/abs/1212.5701
 
+        3. Parameters alpha, epsilon and gamma should not be altered.
 
-    Parameters:
-    ----------
-        lr_rate : float
-            In this implementation, lr_rate corresponds to the 'rho' parameter in Zeiler's
-                formulation of adadelta. This parameter 'is a decay constant similar to that
-                used in momentum method' (Zeiler, 2012).
-
-        epsilon : float
-            'This constant serves the purpose both to start off the first iteration where
-                delta_x_0 = 0 and to ensure progress continues to be made even if previous
-                updates become small' (Zeiler, 2012).
-
-        dtype : theano.config
-            Float type to be used. May affect speed and GPU usage.
-
-    Notes:
-    -----
-        Parameters alpha, epsilon and gamma should not be altered.
-
-        Creates several zipped lists to ensure every list has the same size and
+        4. Creates several zipped lists to ensure every list has the same size and
             has the same order given the parameters.
 
-        Creates several shared variables to be used among all the calculations
+        5. Creates several shared variables to be used among all the calculations
             and updates.This is necessary because Theano will update the values
             of the variables and this could cause interference on the rmsprop
             computations.
+
+
+    :param: lr_rate : float
+        In this implementation, lr_rate corresponds to the 'rho' parameter in Zeiler's
+            formulation of adadelta. This parameter 'is a decay constant similar to that
+            used in momentum method' (Zeiler, 2012).
+
+    :param: epsilon : float
+        'This constant serves the purpose both to start off the first iteration where
+            delta_x_0 = 0 and to ensure progress continues to be made even if previous
+            updates become small' (Zeiler, 2012).
+
+    :param: dtype : theano.config
+        Float type to be used. May affect speed and GPU usage.
 
     """
 
@@ -148,18 +148,14 @@ class Adadelta(Optimizer):
 
             http://arxiv.org/abs/1308.0850
 
-        Parameters:
-        -----------
-            gradients : theano.tensor
-                Symbolic representation of the parameter gradients.
+        :param: gradients : theano.tensor
+            Symbolic representation of the parameter gradients.
 
-            parameters : list
-                The list of parameters to update (possibly a list of theano.shared)
+        :param: parameters : list
+            The list of parameters to update (possibly a list of theano.shared)
 
-        Return:
-        -------
-            updates : list of tupples
-                List containing tupples formed by a parameter and its update.
+        :return: updates : list of tupples
+            List containing tupples formed by a parameter and its update.
 
         """
         assert (parameters is not None), 'Passing empty parameters to Adadelta'
@@ -203,46 +199,39 @@ class SGD(Optimizer):
         Class to (symbolicaly) define the parameter updates used in Stochastic Gradient Descent
             (SGD) optimization.
 
-        Parameters:
-        ----------
-            lrn_rate: float
-                The amount to which the parameters should updated.
+        :param: lrn_rate: float
+            The amount to which the parameters should updated.
 
-            momentum : float
-                Momentum constant. Deafult to 0.0. Leave it at 0.0 if don't want to use it.
+        :param: momentum : float
+            Momentum constant. Deafult to 0.0. Leave it at 0.0 if don't want to use it.
 
-            nesterov : boolean
-                Whether or not to use the Nesterov's momentum rule. Default to False (i.e., apply
-                    standard momentum rule).
+        :param: nesterov : boolean
+            Whether or not to use the Nesterov's momentum rule. Default to False (i.e., apply
+                standard momentum rule).
 
-            lr_rate_annealing : float
-                The ammount by which we will anneal the learning_rate. Default to 0.0 (i.e., no
-                    annealing).
+        :param: lr_rate_annealing : float
+            The amount by which we will anneal the learning_rate. Default to 0.0 (i.e., no
+                annealing).
 
-            anneal_start : int
-                The number of epoch to start the learning_rate annealing. Defaults to 1.
+        :param: anneal_start : int
+            The number of epoch to start the learning_rate annealing. Defaults to 1.
 
-            anneal_end : int
-                The number of epoch to start the learning_rate annealing. Defaults to 10.
+        :param: anneal_end : int
+            The number of epoch to start the learning_rate annealing. Defaults to 10.
 
-            anneal_type : string
-                The type of annealing to perform.
+        :param: anneal_type : string
+            The type of annealing to perform.
 
-                    If 'step_decay', anneal is based only on lr_rate_annealing using the formula:
-                        lr_rate * (1.0 / (1 + lr_rate_annealing))
+                If 'step_decay', anneal is based only on lr_rate_annealing using the formula:
+                    lr_rate * (1.0 / (1 + lr_rate_annealing))
 
-                    If '1_t_decay', include also the epoch number and use the formula
-                        lr_rate * (1.0 / (1 + lr_rate_annealing * current_epoch))
+                If '1_t_decay', include also the epoch number and use the formula
+                    lr_rate * (1.0 / (1 + lr_rate_annealing * current_epoch))
 
                 Defaults to 'step_decay'.
 
-            dtype : theano.config
-                Float type to be used. May affect speed and GPU usage.
-
-        Returns:
-        -------
-            a tuple of array_like:
-                The update rules for the parameters of each layer according to SGD.
+        :param: dtype : theano.config
+            Float type to be used. May affect speed and GPU usage.
 
         """
 
@@ -262,18 +251,14 @@ class SGD(Optimizer):
         Method to get parameter updates for the optimization process according to Stochastic
             Gradient Descent (SGD).
 
-        Parameters:
-        -----------
-            gradients : theano.tensor
-                Symbolic representation of the parameter gradients.
+        :param: gradients : theano.tensor
+            Symbolic representation of the parameter gradients.
 
-            parameters : list
-                The list of parameters to update (possibly a list of theano.shared)
+        :param: parameters : list
+            The list of parameters to update (possibly a list of theano.shared)
 
-        Return:
-        -------
-            updates : list of tupples
-                List containing tupples formed by a parameter and its update.
+        :return: updates : list of tupples
+            List containing tuples formed by a parameter and its update.
 
         """
 
@@ -330,22 +315,20 @@ class RMSProp(Optimizer):
             of the variables and this could cause interference on the rmsprop
             computations.
 
-    Parameters:
-    ----------
-        lr_rate : float
-           The amount to which the parameters should updated.
+    :param: lr_rate : float
+        The amount to which the parameters should updated.
 
-        alpha : float
-            The factor to compute the g_i and n_i parameters in Alex Grave's formula.
+    :param: alpha : float
+        The factor to compute the g_i and n_i parameters in Alex Grave's formula.
 
-        beta : float
-            The rate to which the gradients should decay before updating them.
+    :param: beta : float
+        The rate to which the gradients should decay before updating them.
 
-        gamma : float
-            Damping factor.
+    :param: gamma : float
+        Damping factor.
 
-        dtype : theano.config
-            Float type to be used. May affect speed and GPU usage.
+    :param: dtype : theano.config
+        Float type to be used. May affect speed and GPU usage.
 
     """
 
@@ -372,18 +355,14 @@ class RMSProp(Optimizer):
 
             http://arxiv.org/abs/1308.0850
 
-        Parameters:
-        -----------
-            gradients : theano.tensor
-                Symbolic representation of the parameter gradients.
+        :param: gradients : theano.tensor
+            Symbolic representation of the parameter gradients.
 
-            parameters : list
-                The list of parameters to update (possibly a list of theano.shared)
+        :param: parameters : list
+            The list of parameters to update (possibly a list of theano.shared)
 
-        Return:
-        -------
-            updates : list of tupples
-                List containing tupples formed by a parameter and its update.
+        :return : updates : list of tupples
+            List containing tupples formed by a parameter and its update.
 
         """
         assert (parameters is not None), 'Passing empty parameters to RMSprop'
