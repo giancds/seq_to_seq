@@ -196,6 +196,7 @@ class SequenceToSequence(object):
               n_epochs=10,
               n_train_samples=-1,
               n_valid_samples=-1,
+              evaluate_before_start=False,
               print_train_info=False,
               save_model=True,
               keep_old_models=False,
@@ -209,6 +210,11 @@ class SequenceToSequence(object):
 
         n_train_batches = n_train_samples / self.batch_size if n_train_samples > -1 else 0
         n_valid_batches = n_valid_samples / self.batch_size if n_valid_samples > -1 else 0
+
+        if evaluate_before_start:
+            valid_loss = self._evaluate_epoch(self.validate_fn,
+                                              valid_data,
+                                              n_batches=n_valid_batches)
 
         for epoch in xrange(n_epochs):
 

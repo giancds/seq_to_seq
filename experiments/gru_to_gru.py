@@ -25,9 +25,9 @@ valid_file = '/home/gian/datasets/fapesp/fapesp-v2.tok.dev.'
 source_lang = 'en'
 target_lang = 'pt'
 
-en_v_size = 60000
-pt_v_size = 80000
-dim_proj = 1000
+en_v_size = 1000
+pt_v_size = 1000
+dim_proj = 10
 
 batch_size = 128
 n_epochs = 5
@@ -84,6 +84,13 @@ seq.setup(batch_size=batch_size, optimizer=optimizer)
 time2 = time.time()
 print 'Initialization took %3.5f seconds. \n' % (time2 - time1)
 
+model_file = '/home/gian/%s_%shid_prj%s_en%s_pt%s_%s_batch%s.hp5y' % \
+             (gru1.__class__.__name__, len(encoder), dim_proj,
+              en_v_size, pt_v_size, optimizer.__class__.__name__,
+              batch_size)
+
+print model_file
+
 # perform the optimization
 seq.train(train_data,
           valid_data,
@@ -92,7 +99,7 @@ seq.train(train_data,
           n_valid_samples=1375,
           print_train_info=True,
           save_model=True,
-          filepath='/home/gian/seq_to_seq.hp5y',
+          filepath=model_file,
           keep_old_models=True)
 
 print 'Done!'
