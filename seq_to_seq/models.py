@@ -11,6 +11,42 @@ from seq_to_seq import optimization, utils
 
 
 class SequenceToSequence(object):
+    """
+    Container to run the experiment described by Sutskever et al. (2014) in
+        "Sequence to Sequence Learning with Neural Networks".
+
+        Link:
+            http://papers.nips.cc/paper/5346-sequence-to-sequence-learning-with-neural-networks.pdf
+
+    Notes:
+        1. If None output is provided, the model will use the last layer of the decoder to provide
+            the output. This means that the parameter n_out of that layer must match the
+            'target_v_size' parameter. In this case, the recurrent weights matrix of that layer
+            will have the size (n_out x n_out*4). If using the default target_v_size, this means
+            a matrix of 100,000 x 100,000 objects (40,000,000,000 parameters, requiring more than
+            151 Gb of RAM to fit this matrix!).
+
+    :param: encoder : list
+        List of Layer objects representing the encoder portion of the model. Usually represented
+            as an Embedding layer followed by one or more Recurrent layers.
+
+    :param: decoder : list
+        List of Layer objects representing the decoder portion of the model. Usually represented
+            as an Embedding layer followed by one or more Recurrent layers.
+
+    :param: output : Layer
+        Layer representing the output of the model. If None is provided, used the last layer of the
+            decoder to provide the output.
+
+    :param: source_v_size : int
+        Source vocabulary size. Defaults to 100,000.
+
+    :param: target_v_size :
+        target vocabulary size. Defaults to 100,000.
+
+    :param: auto_setup : boolean
+        Flag indicating whether or not the model should call the 'setup()' function.
+    """
 
     def __init__(self,
                  encoder,
@@ -19,6 +55,9 @@ class SequenceToSequence(object):
                  source_v_size=100000,
                  target_v_size=100000,
                  auto_setup=False):
+
+        if output is None:
+            assert decoder[-1].get_output_size() == target_v_size
 
         self.encoder = encoder
         self.decoder = decoder
@@ -74,8 +113,11 @@ class SequenceToSequence(object):
 
     def get_parameters(self):
         """
+        Return the symbolic representation of the parameters of all layers of the model.
 
-        :return:
+        :return: list
+            List of symbolic representation of the parameters of all layers.
+
         """
         parameters = []
 
@@ -91,18 +133,48 @@ class SequenceToSequence(object):
         return parameters
 
     def get_layers(self):
+        """
+        Return the layer objects of the model.
+
+        :return: list
+            List of layer objects.
+
+        """
         if self.output is not None:
             return self.encoder + self.decoder + [self.output]
         else:
             return self.encoder + self.decoder
 
     def setup(self, batch_size=128, optimizer=None):
+        """
+        Helper function so setup the model.
+
+        :param batch_size: int
+            Size of the (mini)batch. Defaults to 128.
+
+        :param optimizer: Optimizer object
+            Optimizer object that will return the parameter updates for the model optimization.
+                Defaults to None.
+
+        :return:
+
+        """
         print '\nI\'m setting up the model now...\n'
         self.batch_size = batch_size
         self._setup_train(optimizer)
         self._setup_translate()
 
     def _setup_train(self, optimizer=None):
+        """
+        Setup the training functions.
+
+        :param optimizer: Optimizer object
+            Optimizer object that will return the parameter updates for the model optimization.
+                Defaults to None.
+
+        :return:
+
+        """
 
         if optimizer is None:
             optimizer = optimization.SGD(lr_rate=.7)
@@ -164,6 +236,12 @@ class SequenceToSequence(object):
         )
 
     def _setup_translate(self):
+        """
+        Setup the translation functions.
+
+        :return:
+
+        """
 
         # define our target
         partial_hypothesis = T.imatrix('previous_symbol')
@@ -181,6 +259,24 @@ class SequenceToSequence(object):
                                               allow_input_downcast=True)
 
     def _apply_hard_constraint_on_gradients(self, gradients, threshold=5, l_norm=2):
+        """
+        Function to apply a hard constraint on the parameter's gradients.
+
+        :param gradients: theano.tensor
+            Symbolic representation of the  parameter's gradients.
+
+        :param threshold: int
+            The threshold to which apply the constraints. Defaults to 5 (i.e., if the norm exceeds
+                5, the constraint is applied.
+
+        :param l_norm: int
+            The number of the norm to compute. Defaults to 2 (i.e., L2-norm).
+
+        :return: gradients: theano.tensor
+            Symbolic representation of the parameter's gradients with/without the constraint
+                applied.
+
+        """
 
         for g in gradients:  # for all gradients
             g /= self.batch_size  # divide it by the size of the minibatch
@@ -191,8 +287,8 @@ class SequenceToSequence(object):
         return gradients
 
     def train(self,
-              train_data,
-              valid_data=None,
+              train_data_iterator,
+              valid_data_iterator=None,
               n_epochs=10,
               n_train_samples=-1,
               n_valid_samples=-1,
@@ -202,18 +298,61 @@ class SequenceToSequence(object):
               keep_old_models=False,
               filepath='sequence_to_sequence_model.hp5y',
               overwrite=True):
+        """
+        Function to be called to start the training (optimization) procedure.
+
+        :param train_data_iterator: DatasetIterator object
+            The dataset iterator corresponding to the training data.
+
+        :param valid_data_iterator:
+            The dataset iterator corresponding to the validation data. Defaults to None.
+
+        :param n_epochs: int
+            The number of epochs to train. Defaults to 10.
+
+        :param n_train_samples: int
+            Number of samples in the training data. Defaults to -1.
+
+        :param n_valid_samples:
+            Number of samples in the validation data. Defaults to -1.
+
+        :param evaluate_before_start: boolean
+            A flag indicating whether or not to compute the validation loss prior to start
+                training. Defaults to False.
+
+        :param print_train_info: boolean
+            A flag indicating whether or not to print information about the training process.
+                Defaults to False.
+
+        :param save_model: boolean
+            A flag indicating whether or not to save the model during/after the training.
+                Defaults to True.
+
+        :param keep_old_models: boolean
+            A flag indicating whether or not to keep old models when saving the model during
+                training. Defaults to False.
+
+        :param filepath: string
+            The name of the file to save the model.
+
+        :param overwrite: boolean
+            A flag indicating whether or not to overwrite old models when saving. Defaults to
+                True.
+
+        :return:
+        """
 
         train_time_1 = time.time()
 
-        train_data.set_batch_size(self.batch_size)
-        valid_data.set_batch_size(self.batch_size)
+        train_data_iterator.set_batch_size(self.batch_size)
+        valid_data_iterator.set_batch_size(self.batch_size)
 
         n_train_batches = n_train_samples / self.batch_size if n_train_samples > -1 else 0
         n_valid_batches = n_valid_samples / self.batch_size if n_valid_samples > -1 else 0
 
         if evaluate_before_start:
             valid_loss = self._evaluate_epoch(self.validate_fn,
-                                              valid_data,
+                                              valid_data_iterator,
                                               n_batches=n_valid_batches)
 
         for epoch in xrange(n_epochs):
@@ -225,14 +364,13 @@ class SequenceToSequence(object):
 
             # perform the minibatches and accumulate the total loss
             total_loss += self._perform_minibatches(self.train_fn,
-                                                    train_data,
+                                                    train_data_iterator,
                                                     epoch,
-                                                    n_samples=n_train_samples,
                                                     n_batches=n_train_batches,
                                                     print_train_info=print_train_info)
 
             valid_loss = self._evaluate_epoch(self.validate_fn,
-                                              valid_data,
+                                              valid_data_iterator,
                                               n_batches=n_valid_batches)
 
             # get epoch end tme
@@ -256,17 +394,39 @@ class SequenceToSequence(object):
 
         print '\nTotal training time: %3.5f' % (train_time_2 - train_time_1)
 
-    def _perform_minibatches(self, train_fn, train_data, epoch, n_samples, n_batches,
+    def _perform_minibatches(self, train_fn, train_data, epoch, n_batches,
                              print_train_info=False):
+        """
+        Function that will actually perform the (mini)batches.
+
+        :param train_fn: theano.function
+            Function that will perform one (mini)batch.
+
+        :param train_data: DatasetIterator object
+            Object that will iterate over the dataset to retrieve the (mini)batches slices.
+
+        :param epoch: int
+            Epoch number.
+
+        :param n_batches: : int
+            Number of (mini)batches in each epoch.
+
+        :param print_train_info: boolean
+            Flag indicating whether or not to print information about the training process.
+                Defaults to False.
+
+        :return: float
+            Accumulated loss for the current epoch.
+        """
 
         print '\nEpoch %i \nI am performing minibatches now...' % (epoch + 1)
 
-        total_loss = 0
+        accumulated_loss = 0
         for minibatch_index in xrange(n_batches):
             time1 = time.time()
             train_x, train_y = train_data.next()
             minibatch_avg_cost = train_fn(train_x, train_y)
-            total_loss += minibatch_avg_cost
+            accumulated_loss += minibatch_avg_cost
             time2 = time.time()
             if print_train_info is True:
                 self._print_train_info(
@@ -274,27 +434,27 @@ class SequenceToSequence(object):
                     'Avg. loss: %.8f - '
                     'Time per batch: %3.5f' %
                     ((minibatch_index + 1) * self.batch_size, (self.batch_size * n_batches),
-                     total_loss / (minibatch_index + 1),
+                     accumulated_loss / (minibatch_index + 1),
                      (time2 - time1)))
-        return total_loss
+        return accumulated_loss
 
     def _evaluate_epoch(self, eval_fn, valid_data, n_batches):
         """
         Function to get the total loss (cost) of the network parameters at a given
             epoch.
 
-        Parameters:
-        ----------
-            eval_fn : theano.function
-                Function that will execute the loss computation.
+        :param eval_fn : theano.function
+            Function that will execute the loss computation on the validation dataset.
 
-            n_batches : int
-                The number of batches to execute. Depends on the dataset size and the
-                    number of batches.
+        :param valid_data: DatasetIterator object
+            Object that will iterate over the dataset to retrieve the (mini)batches slices.
 
-            eval_type : string
-                String indicating the type of the evaluation to help printing
-                (i.e., it is applyed to test or validation set). Defaults to 'Test'.
+        :param n_batches : int
+            The number of (mini)batches to execute.
+
+        :return mean_loss : float
+            The averaged loss computed over the validation data.
+
         """
         loss = 0
 
@@ -306,29 +466,13 @@ class SequenceToSequence(object):
         print '\nValidation loss: %.8f ' % mean_loss
         return mean_loss
 
-    def _slice_batch_data(self, x_data, y_data, minibatch_idx):
-
-        batch_size = self.batch_size
-
-        x = x_data[minibatch_idx * batch_size: (minibatch_idx + 1) * batch_size]
-
-        y = y_data[minibatch_idx * batch_size: (minibatch_idx + 1) * batch_size]
-
-        x, y = utils.prepare_data(x, y)
-
-        return x, y
-
     def _print_train_info(self, info):
         """
         Help function to print train information.
 
-        Parameters:
-        ----------
-            info : string
-                Information to be printed
+        :param info : string
+            Information to be printed
 
-        Returns:
-        --------
         """
         sys.stdout.write("\r")  # ensure stuff will be printed at the same line during an epoch
         sys.stdout.write(info)
@@ -428,18 +572,12 @@ class SequenceToSequence(object):
 
                 https://github.com/fchollet/keras
 
-        Parameters:
-        -----------
+        :param filepath : string
+            The file to be used to save the model's parameters.
 
-            filepath : string
-                The file to be used to save the model's parameters.
-
-            overwrite : boolean
-                A flag indicating if we allow the function to overwrite an existing file. Defaults to
-                    False.
-
-        Returns:
-        --------
+        :param overwrite : boolean
+            A flag indicating if we allow the function to overwrite an existing file. Defaults to
+                False.
 
         """
         # Save weights from all layers to HDF5
@@ -480,14 +618,13 @@ class SequenceToSequence(object):
 
                 https://github.com/fchollet/keras
 
-        Parameters:
-        -----------
+        Notes:
+            1. The function assumes that there is a model architecture previously defined and in
+                place to set the parameters loaded from the file. In addition, the model must have
+                the same architecture.
 
-            filepath : string
+        :param filepath : string
                 The file to be used to load the parameters.
-
-        Returns:
-        --------
 
         """
         layers = self.get_layers()

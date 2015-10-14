@@ -5,6 +5,33 @@ import theano.tensor as T
 
 
 def prepare_data(seqs_x, seqs_y, maxlen=None):
+    """
+    Function to prepare the source and targets sequences by padding them so they have the same
+        size.
+
+    Notes:
+
+        1. If the maxlen parameter is not provided, the length of the longest sequence within each
+            list will be used as maxlen (i.e., maxlen_x and maxlen_y will be different).
+
+        2. Therefore, sequences within each block will not have the same size.
+
+    :param seqs_x: list
+        List containing the source sequences.
+
+    :param seqs_y: list
+        List containing the target sequences.
+
+    :param maxlen: int
+        The maximum length of sequences within each block. Defaults to None.
+
+    :return: x_padded : numpy.ndarray
+        The source sequences padded to have the same length.
+
+    :return: y_padded : numpy.ndarray
+        The target sequences padded to have the same length.
+
+    """
 
     lengths_x = [len(s) for s in seqs_x]
     lengths_y = [len(s) for s in seqs_y]
@@ -26,33 +53,36 @@ def prepare_data(seqs_x, seqs_y, maxlen=None):
     return x_padded, y_padded
 
 
-def pad_sequences(sequences, maxlen, nb_samples, dtype='int32', value=-1):
+def pad_sequences(sequences, maxlen, nb_sequences, dtype='int32', value=-1):
+    """
+    Pad sequences so they have the same size.
 
-    x = (numpy.ones((nb_samples, maxlen)) * value).astype(dtype)
+    :param sequences: list
+        List of sequences to pad.
+
+    :param maxlen: int
+        The maximum length of the sequences. (i.e., the size they will have after padding).
+
+    :param nb_sequences: int
+        Number of sequences in the list.
+
+    :param dtype: theano.config
+        The type of the sequence values. Defaults to 'int32'.
+
+    :param value: int
+        The valued to which the sequences should be padded. Defaults to -1.
+
+    :return:
+
+    """
+
+    x = (numpy.ones((nb_sequences, maxlen)) * value).astype(dtype)
     for idx, s in enumerate(sequences):
         trunc = s[:maxlen]
 
         x[idx, :len(trunc)] = trunc
 
     return x
-
-
-def generate_input_mask(x, pad=1):
-
-    mask = T.ones_like(x.sum(axis=-1))  # is there a better way to do this without a sum?
-
-    #  mask is (nb_samples, time)
-    mask = T.shape_padright(mask)  # (nb_samples, time, 1)
-    mask = T.addbroadcast(mask, -1)  # (time, nb_samples, 1) matrix.
-    mask = mask.dimshuffle(1, 0, 2)  # (time, nb_samples, 1)
-
-    if pad > 0:
-        # left-pad in time with 0
-        # padding = alloc_zeros_matrix(pad, mask.shape[1], 1)
-        # T.alloc(np.cast[theano.config.floatX](0.), *dims)
-        padding = T.alloc(numpy.cast[theano.config.floatX](0.), pad, mask.shape[1], 1)
-        mask = T.concatenate([padding, mask], axis=0)
-    return mask.astype('int8')
 
 
 def load_dictionary(filename, encoding='utf_8', skip=0, max_words=50000):
@@ -74,28 +104,23 @@ def load_dictionary(filename, encoding='utf_8', skip=0, max_words=50000):
 
         2. The 0-th index is used for words that will be parsed as 'unknown words'.
 
-        3. The last index is used for the <EOS> (end-of-sentece) symbol.
+        3. The index 1 is used for the <EOS> (end-of-sentence) symbol.
 
-    Parameters:
-    -----------
+    :param: filename : string
+        Name of the file containing the dictionary
 
-        filename : string
-            Name of the file containing the dictionary
+    :param: encoding : string
+        File encoding. Defaults to 'utf_8'.
 
-        encoding : string
-            File encoding. Defaults to 'utf_8'.
+    :param: skip : int
+        Number of lines that should be skiped starting on the first line.
 
-        skip : int
-            Number of lines that should be skiped starting on the first line.
+    :param: max_words : int
+        Maximum number of words to have their indexes loaded. All the other words will have
+            their indexes set to 0. Defaults to 50,000
 
-        max_words int
-            Maximum number of words to have their indexes loaded. All the other words will have
-                their indexes set to 0. Defaults to 50,000
-
-    Returns:
-    --------
-        d : dictionary
-            The loaded dictionary
+    :return: d : dictionary
+        The loaded dictionary
 
     """
 
@@ -128,20 +153,15 @@ def word_to_index(tokens, dictionary):
     """
     Utility function to convert a list of tokens into their indexes.
 
-    Parameters:
-    -----------
-
-        tokens : list of stings
+    :param: tokens : list of stings
             List of strings (tokens) representing the words that should be converted to indexes.
 
-        dictionary : python dictionary
-            Dictionary with words as keys and indexes as values. To be used to convert words into
-                indexes.
+    :param: dictionary : python dictionary
+        Dictionary with words as keys and indexes as values. To be used to convert words into
+            indexes.
 
-    Returns:
-    --------
-        indexes : list of int
-            The list of indexes corresponding to the words.
+    :return: indexes : list of int
+        The list of indexes corresponding to the words.
 
     """
     indexes = []
@@ -160,30 +180,27 @@ def convert_file(filename, dictionary, destination='word_indexes.txt', src_encod
     """
     utility function to convert a tokenized file into its words indexes.
 
-    Parameters:
+    :param: filename : string
+        Source file.
 
-        filename : string
-            Source file.
+    :param: dictionary : python dictionary
+        Dictionary with words as keys and indexes as values. To be used to convert words into
+            indexes.
 
-        dictionary : python dictionary
-            Dictionary with words as keys and indexes as values. To be used to convert words into
-                indexes.
+    :param: destination : string
+        Destination file. Defaults to 'word_indexes.txt'.
 
-        destination : string
-            Destination file. Defaults to 'word_indexes.txt'.
+    :param: src_encoding : string
+        Encoding of source file. Defaults to 'utf_8'.
 
-        src_encoding : string
-            Encoding of source file. Defaults to 'utf_8'.
+    :param: dest_encoding : string
+        Encoding of destination file. Defaults to 'utf_8'.
 
-        dest_encoding : string
-            Encoding of destination file. Defaults to 'utf_8'.
+    :param: add_eos : boolean
+        Flag indicating whether or not to add the <EOS> (end-of-sentence) at the end of each
+            sentence prior to retrieving their indexes.
 
-        add_eos : boolean
-            Flag indicating whether or not to add the <EOS> (end-of-sentence) at the end of each
-                sentence prior to retrieving their indexes.
-
-    Retuns:
-    -------
+    :return:
 
     """
     f2 = codecs.open(destination, 'w', encoding=dest_encoding)
@@ -208,6 +225,25 @@ def convert_file(filename, dictionary, destination='word_indexes.txt', src_encod
 
 
 def load_and_convert_corpora(filename, dictionary, encoding='utf_8', add_eos=True):
+    """
+    Load and convert a file containing a text corpus to have its words convert into indexes.
+
+    :param filename: string
+        The name of the file to be converted.
+
+    :param dictionary: python dictionary
+        A python dictionary mapping words (keys) to ints (values).
+
+    :param encoding: string
+        The file encodeing. Defaults tom 'utf_8'.
+
+    :param add_eos: boolean
+        A flag indicating whether or not to add the '<EOS>' symbol to the end of each sentence.
+            Defaults to True.
+
+    :return:
+
+    """
 
     sequences = []
 
@@ -227,41 +263,38 @@ def load_and_convert_corpora(filename, dictionary, encoding='utf_8', add_eos=Tru
     return sequences
 
 
-def load_indexed_bilingual_corpora(source_language_file, target_language_file,
-                                   src_encoding='utf_8', dest_encoding='utf_8'):
+class DatasetIterator(object):
+    """
+    Class that will perform the iteration over the dataset.
 
-    source_corpora = []
+    :param: source : string
+        Name of the file containing the source corpus.
 
-    with codecs.open(source_language_file, 'r', encoding=src_encoding) as f:
+    :param: target: string
+        Name of the file containing the target corpus.
 
-        for line in f.readlines():
-            tokens = line.split()
-            line_tokens = []
+    :param: source_dict: python dictionary
+        A python dictionary mapping words (keys) to ints (values). Corresponds to the source
+            language dictionary. Defaults to None.
 
-            for token in tokens:
-                line_tokens.append(int(token))
+    :param: target_dict: python dictionary
+        A python dictionary mapping words (keys) to ints (values). Corresponds to the target
+            language dictionary. Defaults to None.
 
-            array = numpy.asarray(line_tokens)
-            source_corpora.append(array)
+    :param: batch_size : int
+        Size of (mini)batch. This is used to return only the amount of date to be used in one
+            (mini) batch. Defaults to 128 (i.e., at each iteration it will return 128 examples).
 
-    target_corpora = []
+    :param: maxlen : int
+        The maximum length of each example.
 
-    with codecs.open(target_language_file, 'r', encoding=dest_encoding) as f:
+    :param: source_encoding: string
+        The encoding of the source corpus file. Defaults to 'utf_8'.
 
-        for line in f.readlines():
-            tokens = line.split()
-            line_tokens = []
+    :param: target_encoding: string
+        The encoding of the target corpus file. Defaults to 'utf_8'.
 
-            for token in tokens:
-                line_tokens.append(int(token))
-
-            array = numpy.asarray(line_tokens, dtype='int8')
-            target_corpora.append(array)
-
-    return source_corpora, target_corpora
-
-
-class DatasetIterator:
+    """
     def __init__(self,
                  source,
                  target,
@@ -269,13 +302,14 @@ class DatasetIterator:
                  target_dict=None,
                  batch_size=128,
                  maxlen=None,
-                 encoding='utf_8'):
+                 source_encoding='utf_8',
+                 target_encoding='utf_8'):
 
         assert source_dict is not None
         assert target_dict is not None
 
-        self.source = codecs.open(source, 'r', encoding=encoding)
-        self.target = codecs.open(target, 'r', encoding=encoding)
+        self.source = codecs.open(source, 'r', encoding=source_encoding)
+        self.target = codecs.open(target, 'r', encoding=target_encoding)
         self.source_dict = source_dict
         self.target_dict = target_dict
 
@@ -288,13 +322,37 @@ class DatasetIterator:
         return self
 
     def reset(self):
+        """
+        Reset the position of both source and target datasets to the initial position.
+
+        """
         self.source.seek(0)
         self.target.seek(0)
 
     def set_batch_size(self, batch_size):
+        """
+        Set the (mini)batch size after we have instantiated the class.
+
+        :param batch_size: int
+            Size of the (mini)batch.
+
+        :return:
+
+        """
         self.batch_size = batch_size
 
     def next(self):
+        """
+        Read the next (mini)batch slice and prepare the sequences. Both source and target slices
+            will have the same number of examples, defined by the class attribute 'batch_size'.
+
+        :return: source : numpy.ndarray
+            The source sequences padded to have the same length.
+
+        :return: target : numpy.ndarray
+            The target sequences padded to have the same length.
+
+        """
         if self.end_of_data:
             self.end_of_data = False
             self.reset()

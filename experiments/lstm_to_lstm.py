@@ -6,7 +6,7 @@ Script to demonstrate the use of the current code version to run the (re-scaled)
 
     http://papers.nips.cc/paper/5346-sequence-to-sequence-learning-with-neural-networks.pdf
 
-This script used GRU units instead of LSTM in the hidden layers.
+This LSTM units in the hidden layers.
 
 """
 import time
