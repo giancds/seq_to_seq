@@ -422,20 +422,22 @@ class SequenceToSequence(object):
         print '\nEpoch %i \nI am performing minibatches now...' % (epoch + 1)
 
         accumulated_loss = 0
+        time_acc = 0
         for minibatch_index in xrange(n_batches):
             time1 = time.time()
             train_x, train_y = train_data.next()
             minibatch_avg_cost = train_fn(train_x, train_y)
             accumulated_loss += minibatch_avg_cost
             time2 = time.time()
+            time_acc += time2
             if print_train_info is True:
                 self._print_train_info(
                     'Examples %i/%i - '
                     'Avg. loss: %.8f - '
-                    'Time per batch: %3.5f' %
+                    'Time per batch: %3.5f (Average: %3.5f)' %
                     ((minibatch_index + 1) * self.batch_size, (self.batch_size * n_batches),
                      accumulated_loss / (minibatch_index + 1),
-                     (time2 - time1)))
+                     (time2 - time1), (time_acc / n_batches)))
         return accumulated_loss
 
     def _evaluate_epoch(self, eval_fn, valid_data, n_batches):
