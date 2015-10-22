@@ -7,6 +7,7 @@ from seq_to_seq.layers_core import Layer
 
 sigmoid = activations.get('sigmoid')
 tanh = activations.get('tanh')
+relu = activations.get('relu')
 
 
 class RecurrentLayer(Layer):
@@ -16,7 +17,7 @@ class RecurrentLayer(Layer):
     :param n_in: int
         The size of the input to the layer (i.e., the number of rows in the weight matrix).
 
-    :param dim_proj: int
+    :param n_out: int
         The size of layer's output (i.e., the number of columns of the weight matrix and the bias
             vector). This is the size of the vector that will represent each of the inputs.
 
@@ -638,9 +639,6 @@ class GRU(RecurrentLayer):
     :param return_sequences: boolean
         Flag indicating whether or not to the layer should output the previous hidden states.
 
-    :param use_peepholes: boolean
-        Flag indicating whether or not to the layer should use peephole connections.
-
     :param layer_number: int
         The layer position in the computational path.
 
@@ -656,6 +654,7 @@ class GRU(RecurrentLayer):
 
     :return:
     """
+
     def __init__(self,
                  n_in,
                  n_out,
@@ -906,5 +905,274 @@ class GRU(RecurrentLayer):
                                  allow_downcast=True)
         self.U_r = theano.shared(value=recs_r, name='U_r_%s' % self.layer_number, borrow=True,
                                  allow_downcast=True)
+        self.b = theano.shared(value=bias, name='b_%s' % self.layer_number, borrow=True,
+                               allow_downcast=True)
+
+
+class RecurrentReLu(RecurrentLayer):
+    """
+    Gated Recurrent Unit (GRU) class.
+
+    Notes:
+    ------
+        1. Implemented following Bahdanau's et al. (2015) paper: "Neural Machine Translation by
+            Jointly Learning to Align and Translate".
+
+            http://arxiv.org/abs/1409.0473
+
+    Notes:
+    ------
+        1. Implemented following Greff's et al (2015) paper "LSTM: A Search Space Odyssey"
+
+            Link: http://arxiv.org/abs/1503.04069
+
+    :param n_in: int
+        The size of the input to the layer (i.e., the number of rows in the weight matrix).
+
+    :param dim_proj: int
+        The size of layer's output (i.e., the number of columns of the weight matrix and the bias
+            vector). This is the size of the vector that will represent each of the inputs.
+
+    :param previous_layer: Layer object
+        The previous layer in the computational path.
+
+    :param return_sequences: boolean
+        Flag indicating whether or not to the layer should output the previous hidden states.
+
+    :param layer_number: int
+        The layer position in the computational path.
+
+    :param seed: int
+        The seed to feed the random number generator.
+
+    :param auto_setup: boolean
+        Flag indicating if the model should call setup() when initializing the model or leave it
+            to the user to call it explicitly.
+
+    :param dtype: theano.config.floatX
+        Type of floating point to be used.
+
+    :return:
+    """
+
+    def __init__(self,
+                 n_in,
+                 n_out,
+                 previous_layer=None,
+                 return_sequences=True,
+                 layer_number=1,
+                 seed=123,
+                 auto_setup=True,
+                 init_identity=True,
+                 dtype=theano.config.floatX):
+
+        self.W = None
+        self.R = None
+        self.b = None
+
+        self.init_identity = init_identity
+
+        self.initial_state = None
+        self.reset_initial_state = True
+
+        RecurrentLayer.__init__(self,
+                                n_in,
+                                n_out,
+                                previous_layer=previous_layer,
+                                return_sequences=return_sequences,
+                                layer_number=layer_number,
+                                seed=seed,
+                                auto_setup=auto_setup,
+                                dtype=dtype)
+
+    def init_params(self, seed=123):
+        """
+        Function that will perform the parameter's initialization. For this layer it is a matrix
+            of weights (n_in x n_out*3), three matrices of recurrent weights (n_out x n_out) and
+            a bias vector (n_out*3).
+
+        Notes:
+        ------
+            1. The 4 sets of weights are concatenated into one big matrix. This is done to speedup
+                the computations. After computing the dot product of weights and input and adding
+                 the bias, the result is then sliced into 4 parts, each one corresponding to the
+                  inputs to the block, input gate, forget gate and output gate.
+
+            2. The same logic is applied to the bias vector.
+
+        :param seed: int
+            A seed to feed the random number generator.
+
+        :return:
+
+        """
+
+        n_rows = self.n_in
+
+        if self.init_identity:
+            # initialize weights as identity matrices
+            self.W = theano.shared(
+                value=numpy.identity(n_rows).astype(self.dtype),
+                name='W_%s' % self.layer_number, borrow=True, allow_downcast=True)
+
+            self.R = theano.shared(
+                value=numpy.identity(n_rows).astype(self.dtype),
+                name='R_%s' % self.layer_number, borrow=True, allow_downcast=True)
+
+            self.b = theano.shared(
+                value=numpy.zeros(n_rows).astype(self.dtype),
+                name='b_%s' % self.layer_number, borrow=True, allow_downcast=True)
+
+        else:
+            rng = numpy.random.RandomState(seed)
+            n_cols = self.n_out
+
+            self.W = theano.shared(
+                value=rng.uniform(low=-.08, high=.08, size=(self.n_in, n_cols)).astype(self.dtype),
+                name='W_%s' % self.layer_number, borrow=True, allow_downcast=True)
+
+            self.R = theano.shared(
+                value=rng.uniform(low=-.08, high=.08, size=(self.n_in, n_cols)).astype(self.dtype),
+                name='R_%s' % self.layer_number, borrow=True, allow_downcast=True)
+
+            self.b = theano.shared(
+                value=rng.uniform(low=-.08, high=.08, size=n_cols).astype(self.dtype),
+                name='b_%s' % self.layer_number, borrow=True, allow_downcast=True)
+
+    def get_layer_parameters(self):
+        """
+        Function to return the layer's parameters (in this case, their symbolic representation).
+            for this particular layer, the list will have size 5.
+
+        :return: params : list
+            A list containing the layer's parameters in the form of theano.shared variables.
+
+        """
+        return [self.W, self.R, self.b]
+
+    def set_initial_state(self, initial_state):
+        """
+        Set the initial state of the hidden layers. This is intended to be used when conditioning
+            the input sequence to an encoded version of a different sequence.
+
+        :param initial_state: theano.tensor
+            Symbolic representation of the initial hidden state.
+
+        :return:
+
+        """
+        self.initial_state = initial_state
+        self.reset_initial_state = False
+
+    def _activate(self, x):
+        """
+        Compute the actual activation of the layer.
+
+        :param x: theano.tensor
+            Symbolic representation of the layer's input.
+
+        :return: theano.tensor
+            Symbolic representation of the layer's activation. If the flag 'return_sequences'
+                is set to True, the layer will return all the hidden states computed by scan.
+
+        """
+        mask = self.get_padded_shuffled_mask(x)
+
+        # input to block is (batch, time, input)
+        # we want it to be  (time, batch, input)
+        x = x.dimshuffle((1, 0, 2))
+
+        xs = T.dot(x, self.W) + self.b
+
+        if self.reset_initial_state:
+            initial_state = T.unbroadcast(T.alloc(
+                numpy.asarray(0., dtype=self.dtype),
+                x.shape[1], self.n_out
+            ))
+        else:
+            initial_state = self.initial_state
+
+        state, updates = theano.scan(
+            self._step,
+            sequences=[xs, mask],
+            outputs_info=[initial_state],
+            non_sequences=[self.R],
+            n_steps=x.shape[0]  # keep track of number of steps to return all computations
+        )
+
+        if self.return_sequences:
+            return state.dimshuffle((1, 0, 2))
+        else:
+            return state[-1]
+
+    def _step(self, x_, m_, s_, r_):
+        """
+        Perform the computation step of the recursion when 'use_peepholes' flag is set to False.
+
+        :param x_ : theano.tensor
+            Symbolic representation of the input to the layer (already performed dot product and
+                bias addition).
+
+        :param m_: theano.tensor
+            Symbolic representation of mask to the current item of the sequence.
+
+        :param s_: theano.tensor
+            Symbolic representation of the previous hidden state
+
+        :param r_ : theano.tensor
+            Symbolic representation of the recurrent weights to the layer.
+
+        :return: theano.tensor
+            Symbolic representation of the new hidden state.
+
+        """
+        s_prev = s_ * m_  # applying mask
+        s_dot = x_ + T.dot(s_prev, r_)
+        si = relu(s_dot)
+        return si
+
+    def get_weights(self):
+        """
+        Return a list containing the actual values of the of the layer's parameters. For this
+            layer the list will have size 5.
+
+        :return: list
+            A list containing the numpy.ndarrays representing the current weights of the layer.
+                For this particular layer, if the the flag
+
+        """
+
+        weights = [self.W.get_value(borrow=True),
+                   self.R.get_value(borrow=True),
+                   self.b.get_value(borrow=True)]
+
+        return weights
+
+    def set_weights(self, parameters, layer_number):
+        """
+        Set the layer's parameters when loaded from a saved model
+
+        :param parameters: list
+            A list containing the numpy.ndarrays representing the actual weights. For this
+                particular layer, the size of the list is 5.
+
+        :param layer_number: integer
+            The position of the layer in the computational path. It is used to name the
+                theano.shared variable.
+
+        :return:
+
+        """
+        assert len(parameters) == 3, 'Wrong number of parameters to be set to RecurrentReLu layer!'
+
+        self.layer_number = layer_number
+        weights = parameters[0].value
+        recs = parameters[1].value
+        bias = parameters[2].value
+
+        self.W = theano.shared(value=weights, name='W_%s' % self.layer_number, borrow=True,
+                               allow_downcast=True)
+        self.R = theano.shared(value=recs, name='R_%s' % self.layer_number, borrow=True,
+                               allow_downcast=True)
         self.b = theano.shared(value=bias, name='b_%s' % self.layer_number, borrow=True,
                                allow_downcast=True)
