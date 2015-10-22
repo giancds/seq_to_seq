@@ -303,7 +303,8 @@ class DatasetIterator(object):
                  batch_size=128,
                  maxlen=None,
                  source_encoding='utf_8',
-                 target_encoding='utf_8'):
+                 target_encoding='utf_8',
+                 revert_source=False):
 
         assert source_dict is not None
         assert target_dict is not None
@@ -315,6 +316,7 @@ class DatasetIterator(object):
 
         self.batch_size = batch_size
         self.maxlen = maxlen
+        self.revert_source = revert_source
 
         self.end_of_data = False
 
@@ -378,6 +380,8 @@ class DatasetIterator(object):
                 ss = ss.strip().split()
                 ss.append('<EOS>')
                 ss = word_to_index(ss, self.source_dict)
+                if self.revert_source:
+                    ss = ss[::-1]
 
                 tt = tt.strip().split()
                 tt += ['<EOS>']
