@@ -25,8 +25,8 @@ valid_file = '/home/gian/datasets/fapesp/fapesp-v2.tok.dev.'
 source_lang = 'en'
 target_lang = 'pt'
 
-en_v_size = 1000
-pt_v_size = 1000
+en_v_size = 100
+pt_v_size = 100
 dim_proj = 10
 
 batch_size = 128

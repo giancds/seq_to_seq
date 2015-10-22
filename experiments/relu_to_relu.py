@@ -20,16 +20,17 @@ from seq_to_seq.utils import DatasetIterator, load_dictionary
 
 # some information to be used for training and validation
 dict_file = '/home/gian/datasets/dict.sort.'
-train_file = '/home/gian/datasets/fapesp/fapesp-v2.tok.train.'
+# train_file = '/home/gian/datasets/fapesp/fapesp-v2.tok.train.'
+train_file = '/home/gian/datasets/fapesp/fapesp-v2.tok.test-a.'
 valid_file = '/home/gian/datasets/fapesp/fapesp-v2.tok.dev.'
 source_lang = 'en'
 target_lang = 'pt'
 
-en_v_size = 1000
-pt_v_size = 1000
-dim_proj = 10
+en_v_size = 30000
+pt_v_size = 30000
+dim_proj = 100
 
-batch_size = 128
+batch_size = 32
 n_epochs = 5
 
 seed = 1234
@@ -89,13 +90,14 @@ model_file = '/home/gian/%s_%shid_prj%s_en%s_pt%s_%s_batch%s.hp5y' % \
               en_v_size, pt_v_size, optimizer.__class__.__name__,
               batch_size)
 
-print model_file
+print 'Saving to ' + model_file
 
 # perform the optimization
 seq.train(train_data,
           valid_data,
           n_epochs=n_epochs,
-          n_train_samples=160975,
+          # n_train_samples=160975,
+          n_train_samples=1314,
           n_valid_samples=1375,
           print_train_info=True,
           save_model=True,
